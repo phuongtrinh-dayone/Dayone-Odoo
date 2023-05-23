@@ -12,7 +12,7 @@
                 </data>
             </field>
     </record>
-    <record id="view_move_form_bill_digital_inherit" model="ir.ui.view">
+    <record id="view_move_form_inherit_ocr_inherit" model="ir.ui.view">
             <field name="name">invoice.move.form.inherit.ocr.inherit</field>
             <field name="model">account.move</field>
             <field name="inherit_id" ref="account_invoice_extract.view_move_form_inherit_ocr"/>
