@@ -228,10 +228,10 @@ class AccountMove(models.Model):
         seller_bank_code=Invoice_Data.find("NDHDon/NBan/STKNHang").text if Invoice_Data.find("NDHDon/NBan/STKNHang")!=None else "",
         seller_bank_name=Invoice_Data.find("NDHDon/NBan/TNHang").text if Invoice_Data.find("NDHDon/NBan/TNHang")!=None else "",
         # Thông tin người mua
-        # buyer_name=Invoice_Data.find("NDHDon/NMua/Ten").text if Invoice_Data.find("NDHDon/NMua/Ten")!=None else ""
-        # buyer_tax_code=Invoice_Data.find("NDHDon/NMua/MST").text if Invoice_Data.find("NDHDon/NMua/MST")!=None else ""
-        # buyer_address=Invoice_Data.find("NDHDon/NMua/DChi").text if Invoice_Data.find("NDHDon/NMua/DChi")!=None else "",
-        # buyer_name1=Invoice_Data.find("NDHDon/NMua/HVTNMHang").text if Invoice_Data.find("NDHDon/NMua/HVTNMHang")!=None else "",
+        buyer_name=Invoice_Data.find("NDHDon/NMua/Ten").text if Invoice_Data.find("NDHDon/NMua/Ten")!=None else ""
+        buyer_tax_code=Invoice_Data.find("NDHDon/NMua/MST").text if Invoice_Data.find("NDHDon/NMua/MST")!=None else ""
+        buyer_address=Invoice_Data.find("NDHDon/NMua/DChi").text if Invoice_Data.find("NDHDon/NMua/DChi")!=None else "",
+        buyer_name1=Invoice_Data.find("NDHDon/NMua/HVTNMHang").text if Invoice_Data.find("NDHDon/NMua/HVTNMHang")!=None else "",
         # Record đơn hàng
         record1=[]
         for record in Invoice_Data.findall(".//HHDVu"):
@@ -252,14 +252,14 @@ class AccountMove(models.Model):
         total=Invoice_Data.find("TToan/TgTCThue") if Invoice_Data.find("TToan/TgTCThue")!=None else 0,
         total_after_VAT=Invoice_Data.find("TToan/TgTTTBSo") if Invoice_Data.find("TToan/TgTTTBSo")!=None else 0
         
-        if buyer_name==None:
-            buyer_name=""
-        else:
-            buyer_name=buyer_name[0]
-        if buyer_name1==None:
-            buyer_name1=""
-        else:
-            buyer_name1=buyer_name1[0]
+        # if buyer_name==None:
+        #     buyer_name=""
+        # else:
+        #     buyer_name=buyer_name[0]
+        # if buyer_name1==None:
+        #     buyer_name1=""
+        # else:
+        #     buyer_name1=buyer_name1[0]
         return {
             "serial":serial,
             "invoice_No":invoice_No[0],
@@ -310,7 +310,8 @@ class AccountMove(models.Model):
         try:
             ICP = self.env['ir.config_parameter'].sudo()
             key=ICP.get_param('GPT_digital.openapi_api_key')
-
+            if key=="" or key==None:
+                raise UserError(_('API key for ChatGPT is not found.'))
             openai.api_key = key
             data_message="Mapping data from text to json "+text+"for format "+json_format +" if many 'seller_bank_code' get first"
             messages = [
@@ -359,7 +360,7 @@ class AccountMove(models.Model):
                     self.currency_id = currency
 
         add_lines = not self.invoice_line_ids or force_write
-        if True:
+        if add_lines:
             if force_write:
                 self.invoice_line_ids = [Command.clear()]
             vals_invoice_lines = self._get_invoice_lines(results,type)
