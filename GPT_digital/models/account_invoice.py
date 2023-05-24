@@ -475,3 +475,4 @@ class AccountMove(models.Model):
                                 message_type='comment',
                                 subtype_xmlid='mail.mt_note',
                                 author_id=odoobot.id)
+        list_log_note=[]
