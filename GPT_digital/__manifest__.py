@@ -7,6 +7,7 @@
     'website': 'https://leonix.vn',
     'depends' : ['base','account','account_invoice_extract'],
     'data': [
+        'security/ir.model.access.csv',
         'views/account_invoice.xml',
         'views/res_config_settings_views.xml'
     ],

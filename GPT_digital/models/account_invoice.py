@@ -9,6 +9,7 @@ import base64
 import logging
 import openai
 import magic
+from fuzzywuzzy import fuzz, process
 import xml.etree.ElementTree as ET
 _logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ json_format="""{
         "total_after_VAT":"Double"
     }"""
 
+list_log_note=[]
 
 class AccountMove(models.Model):
     _inherit = ['account.move']
@@ -91,6 +93,9 @@ class AccountMove(models.Model):
         vat_number=data['seller_tax_code']
         iban=data['seller_bank_code']
         client=data['seller_name']
+
+        self.parse_address(data["seller_address"])
+
         # Tìm nguời dùng với mã số  thuế
         if vat_number:
             partner_vat = self.find_partner_id_with_vat(vat_number)
@@ -105,18 +110,47 @@ class AccountMove(models.Model):
         partner_id = self.find_partner_id_with_name(client)
         if partner_id != 0:
             return self.env["res.partner"].browse(partner_id), False
+        
         # Create new Partner
         if vat_number:
+            street ,state ,country = self.parse_address(data["seller_address"])
             partner_id=self.env['res.partner'].create({
                     "name":data["seller_name"],
-                    "street":data["seller_address"],
+                    "street":street,
+                    "state_id":state,
+                    "is_company":True,
+                    "country_id":country,
                     "vat":data["seller_tax_code"],
                     "phone":data["seller_phone"],
-
                 })
             return partner_id,True
         return False, False
 
+    def parse_address(self,address):
+        parts = address.split(", ")
+        street = ", ".join(parts[:-2])
+        state = parts[-2]
+        country = parts[-1]
+        # ------------------------------------------------
+        country_ids=self.env['res.country'].search([])
+        choices_country = country_ids.mapped('name')  # Danh sách các lựa chọn tìm kiếm
+        results_country = process.extract(country, choices_country, scorer=fuzz.ratio, limit=1)
+        matched_country_records = self.env['res.country'].search([('name', 'in', [r[0] for r in results_country])])
+        country_id=matched_country_records[0]
+        # ------------------------------------------------  
+        if country_id:
+            records = self.env['res.country.state'].search([('country_id','=',country_id.id)])
+            choices = records.mapped('name')  # Danh sách các lựa chọn tìm kiếm
+            results = process.extract(state, choices, scorer=fuzz.ratio, limit=10)
+            
+            results=[r for r in results if r[1] >= 70]
+            matched_records = self.env['res.country.state'].search([('name', 'in', [r[0] for r in results])])
+            if len(matched_records)>0:
+                return street, matched_records[0].id, country_id.id
+            else:
+                return ", ".join(parts[:-1]),False,country_id.id
+        return address,False,False 
+    
     # Map đơn vị tiền tệ vào hóa đơn
     def _get_currency(self, currency_ocr, partner_id):
         for comparison in ['=ilike', 'ilike']:
@@ -128,6 +162,8 @@ class AccountMove(models.Model):
             ])
             if possible_currencies:
                 break
+            else:
+                list_log_note.append(("No matching currency","notice"))
 
         partner_last_invoice_currency = partner_id.invoice_ids[:1].currency_id
         if partner_last_invoice_currency in possible_currencies:
@@ -136,6 +172,17 @@ class AccountMove(models.Model):
             return self.company_id.currency_id
         return possible_currencies[:1]
 
+    # 
+    def _get_product(self,data):
+        records = self.env['product.product'].search([])
+        choices = records.mapped('name')  # Danh sách các lựa chọn tìm kiếm
+        results = process.extract(data['Name'], choices, scorer=fuzz.ratio, limit=10)
+        results=[r for r in results if r[1] >= 70]
+        matched_records = self.env['product.product'].search([('name', 'in', [r[0] for r in results])])
+        if(len(matched_records)>0):
+            return matched_records[0].id
+        return False
+        
     # Map các dòng chi tiết của hóa đơn
     def _get_invoice_lines(self, results,type):
         """
@@ -151,10 +198,11 @@ class AccountMove(models.Model):
             else:
                 tax_ids=self._get_vat_line_XML(il)
             description = il['Name'] if 'Name' in il else "/"
-            unit_price = il['Price'] if 'Price' in il else 0
-            quantity = il['Quantity'] if 'Quantity' in il else 1.0
+            unit_price = il['Price'] if 'Price' in il else list_log_note.append(("No matching price","warning"))
+            quantity = il['Quantity'] if 'Quantity' in il else list_log_note.append(("No matching quantity","warning"))
             
             vals = {
+                'product':self._get_product(il),
                 'name': description,
                 'price_unit': unit_price,
                 'quantity': quantity,
@@ -172,9 +220,15 @@ class AccountMove(models.Model):
             type=self.journal_id.type
             if type=="purchase":
                 tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'][:-1])),('type_tax_use','=','purchase')],limit=1)
+                if not tax_id:
+                    print('1111111')
+                    list_log_note.append(("No matching taxes","warning"))
                 return tax_id.id
             elif type=="sale":
                 tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'][:-1])),('type_tax_use','=','sale')],limit=1)
+                if not tax_id:
+                    print('2222222222')
+                    list_log_note.append(("No matching taxes","warning"))
                 return tax_id.id
         else:
             return False
@@ -183,9 +237,16 @@ class AccountMove(models.Model):
         type=self.journal_id.type
         if type=="purchase":
             tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'])),('type_tax_use','=','purchase')],limit=1)
+            if not tax_id and int(data['VAT'])!=0 :
+                list_log_note.append(("No matching taxes","warning"))
+                print('3333333333')
             return tax_id.id
         elif type=="sale":
             tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'])),('type_tax_use','=','sale')],limit=1)
+            # Neu co thue va thue do khac 0
+            if not tax_id and int(data['VAT'])!=0 :
+                list_log_note.append(("No matching taxes","warning"))
+                print('4444444444')
             return tax_id.id
         else:
             return False
@@ -202,6 +263,7 @@ class AccountMove(models.Model):
             for data_attachment in data_attachments:
                 data_convert=self.convert_data_from_xml(data_attachment)
                 self.mapping_invoice_from_data(data_convert,"XML",force_write=force_write)
+                
 
     # Convert data xml thành json
     def convert_data_from_xml(self,data):
@@ -252,14 +314,6 @@ class AccountMove(models.Model):
         total=Invoice_Data.find("TToan/TgTCThue") if Invoice_Data.find("TToan/TgTCThue")!=None else 0,
         total_after_VAT=Invoice_Data.find("TToan/TgTTTBSo") if Invoice_Data.find("TToan/TgTTTBSo")!=None else 0
         
-        # if buyer_name==None:
-        #     buyer_name=""
-        # else:
-        #     buyer_name=buyer_name[0]
-        # if buyer_name1==None:
-        #     buyer_name1=""
-        # else:
-        #     buyer_name1=buyer_name1[0]
         return {
             "serial":serial,
             "invoice_No":invoice_No[0],
@@ -310,8 +364,7 @@ class AccountMove(models.Model):
         try:
             ICP = self.env['ir.config_parameter'].sudo()
             key=ICP.get_param('GPT_digital.openapi_api_key')
-            if key=="" or key==None:
-                raise UserError(_('API key for ChatGPT is not found.'))
+            
             openai.api_key = key
             data_message="Mapping data from text to json "+text+"for format "+json_format +" if many 'seller_bank_code' get first"
             messages = [
@@ -326,8 +379,13 @@ class AccountMove(models.Model):
             # Get the assistant's reply
             reply = response['choices'][0]['message']['content']
             return json.loads(reply)
+        # except openai.error.AuthenticationError:
+        #     raise UserError(_('API key has expired.'))
         except:
-            raise UserError(_('An error occurred during the process, please try again.'))
+            if key=="" or key==None or key==False:
+                raise UserError(_('API key for ChatGPT is not found.'))
+            else:
+                raise UserError(_('An error occurred during the process, please try again.'))
 
     # endregion
 
@@ -346,11 +404,18 @@ class AccountMove(models.Model):
                 self.partner_id = partner_id
         
         context_create_date = fields.Date.context_today(self, self.create_date)
-        if date_invoice and (not self.invoice_date or self.invoice_date == context_create_date or force_write):
-                self.invoice_date = date_invoice
+        if date_invoice=="":
+            list_log_note.append(("No matching date invoice","warning"))
+        if date_invoice!="" and (not self.invoice_date or self.invoice_date == context_create_date or force_write):
+            self.invoice_date = date_invoice
+        
+                
 
         if (not self.ref or force_write):
-                self.ref = serial+"/"+invoice_id
+            ref=serial+"/"+invoice_id
+            self.ref = ref
+            if ref=="/":
+                list_log_note.append(("No matching bill reference","notice"))
 
         if self.quick_edit_mode:
             self.name = serial+"/"+invoice_id
@@ -358,47 +423,55 @@ class AccountMove(models.Model):
                 currency = self._get_currency(currency, self.partner_id)
                 if currency:
                     self.currency_id = currency
-
-        add_lines = not self.invoice_line_ids or force_write
-        if add_lines:
-            if force_write:
-                self.invoice_line_ids = [Command.clear()]
-            vals_invoice_lines = self._get_invoice_lines(results,type)
-            self.invoice_line_ids = [
-                Command.create({'name': line_vals.pop('name')})
-                for line_vals in vals_invoice_lines
-            ]
-            for line, ocr_line_vals in zip(self.invoice_line_ids[-len(vals_invoice_lines):], vals_invoice_lines):
+        # xử lý record line
+        if force_write:
+            self.invoice_line_ids = [Command.clear()]
+        self.invoice_line_ids.unlink()
+        vals_invoice_lines = self._get_invoice_lines(results,type)
+        self.invoice_line_ids = [
+            Command.create({'name': line_vals.pop('name')})
+            for line_vals in vals_invoice_lines
+        ]
+        for line, ocr_line_vals in zip(self.invoice_line_ids[-len(vals_invoice_lines):], vals_invoice_lines):
+                line.tax_ids=False
+                line.write({
+                    'product_id': ocr_line_vals['product'],
+                    'price_unit': ocr_line_vals['price_unit'],
+                    'quantity': ocr_line_vals['quantity'],
+                    'tax_ids':[]
+                })
+                if ocr_line_vals['tax_ids']!=False:
                     line.tax_ids=False
                     line.write({
-                        'price_unit': ocr_line_vals['price_unit'],
-                        'quantity': ocr_line_vals['quantity'],
-                        # 'tax_ids':[(4, ocr_line_vals['tax_ids'])]
-                    })
-                    if ocr_line_vals['tax_ids']!=False:
-                        line.tax_ids=False
-                        line.write({
-                        'tax_ids':[(4, ocr_line_vals['tax_ids'])]
-                    })
-    
+                    'tax_ids':[(4, ocr_line_vals['tax_ids'])]
+                })
+    # Sự kiện Diligital
     def update_data_invoice(self):
         attachments = self.message_main_attachment_id
         
         if attachments.exists():
             data_attachments=[x.datas.decode('utf-8') for x in attachments]
+            
             data_attachment=data_attachments[0]
             binary_data = base64.b64decode(data_attachment)
             file_format=self.get_file_format(binary_data)
             file_format=file_format.lower()
-            print(file_format)
             if "pdf" in file_format:
                 self.load_invoice_PDF(force_write=False)
             elif "xml" in file_format or file_format=="text/plain":
                 self.load_invoice_XML(force_write=False)
             else:
                 raise UserError(_('The file format must be XML or PDF.'))
-                
-   
-
-
-
+        self.log_note()
+    # Log cảnh báo lỗi
+    def log_note(self):
+        for log in list_log_note:
+            if log[1]=="notice":
+                note="⚠️ [NOTICE] "+log[0]
+            else:
+                note="⚠️ [WARNING] "+log[0]
+            odoobot = self.env.ref('base.partner_root')
+            self.message_post(body=_(note),
+                                message_type='comment',
+                                subtype_xmlid='mail.mt_note',
+                                author_id=odoobot.id)
