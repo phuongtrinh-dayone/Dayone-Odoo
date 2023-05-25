@@ -11,7 +11,6 @@ import openai
 import magic
 from fuzzywuzzy import fuzz, process
 import xml.etree.ElementTree as ET
-_logger = logging.getLogger(__name__)
 
 
 json_format="""{
@@ -221,13 +220,11 @@ class AccountMove(models.Model):
             if type=="purchase":
                 tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'][:-1])),('type_tax_use','=','purchase')],limit=1)
                 if not tax_id:
-                    print('1111111')
                     list_log_note.append(("No matching taxes","warning"))
                 return tax_id.id
             elif type=="sale":
                 tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'][:-1])),('type_tax_use','=','sale')],limit=1)
                 if not tax_id:
-                    print('2222222222')
                     list_log_note.append(("No matching taxes","warning"))
                 return tax_id.id
         else:
@@ -239,14 +236,12 @@ class AccountMove(models.Model):
             tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'])),('type_tax_use','=','purchase')],limit=1)
             if not tax_id and int(data['VAT'])!=0 :
                 list_log_note.append(("No matching taxes","warning"))
-                print('3333333333')
             return tax_id.id
         elif type=="sale":
             tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'])),('type_tax_use','=','sale')],limit=1)
             # Neu co thue va thue do khac 0
             if not tax_id and int(data['VAT'])!=0 :
                 list_log_note.append(("No matching taxes","warning"))
-                print('4444444444')
             return tax_id.id
         else:
             return False
@@ -255,100 +250,97 @@ class AccountMove(models.Model):
 
     # region Get data XML format
     # Load data XML
-    def load_invoice_XML(self,force_write=False):
+    def load_invoice_XML(self,data_attachment,force_write=False):
         self.ensure_one()
-        attachments = self.message_main_attachment_id
-        if attachments.exists():
-            data_attachments=[x.datas.decode('utf-8') for x in attachments]
-            for data_attachment in data_attachments:
-                data_convert=self.convert_data_from_xml(data_attachment)
-                self.mapping_invoice_from_data(data_convert,"XML",force_write=force_write)
-                
+        data_convert=self.convert_data_from_xml(data_attachment)
+        if data_convert==False:
+            return False
+        self.mapping_invoice_from_data(data_convert,"XML",force_write=force_write)
+        return True
 
     # Convert data xml thành json
     def convert_data_from_xml(self,data):
+        try:
+            decoded_data = base64.b64decode(data)
 
-        decoded_data = base64.b64decode(data)
+            # Create the XML element tree
+            root = ET.fromstring(decoded_data)
+            Invoice_Data=root.find(".//DLHDon")
 
-        # Create the XML element tree
-        root = ET.fromstring(decoded_data)
-        Invoice_Data=root.find(".//DLHDon")
+            # Thông tin tổng quát
+            serial1=Invoice_Data.find("TTChung/KHMSHDon").text if Invoice_Data.find("TTChung/KHMSHDon")!=None else""
+            serial2=Invoice_Data.find("TTChung/KHHDon").text if Invoice_Data.find("TTChung/KHHDon")!=None else""
+            serial=serial1+serial2
+            invoice_No=Invoice_Data.find("TTChung/SHDon").text if Invoice_Data.find("TTChung/SHDon")!=None else "",
+            date_create=Invoice_Data.find("TTChung/NLap").text if Invoice_Data.find("TTChung/NLap")!=None else "",
+            currency=Invoice_Data.find("TTChung/DVTTe").text if Invoice_Data.find("TTChung/DVTTe")!=None else "",
 
-        # Thông tin tổng quát
-        serial1=Invoice_Data.find("TTChung/KHMSHDon").text if Invoice_Data.find("TTChung/KHMSHDon")!=None else""
-        serial2=Invoice_Data.find("TTChung/KHHDon").text if Invoice_Data.find("TTChung/KHHDon")!=None else""
-        serial=serial1+serial2
-        invoice_No=Invoice_Data.find("TTChung/SHDon").text if Invoice_Data.find("TTChung/SHDon")!=None else "",
-        date_create=Invoice_Data.find("TTChung/NLap").text if Invoice_Data.find("TTChung/NLap")!=None else "",
-        currency=Invoice_Data.find("TTChung/DVTTe").text if Invoice_Data.find("TTChung/DVTTe")!=None else "",
-
-        # Thông tin người bán            
-        seller_name=Invoice_Data.find("NDHDon/NBan/Ten").text if Invoice_Data.find("NDHDon/NBan/Ten")!=None else "",
-        seller_tax_code=Invoice_Data.find("NDHDon/NBan/MST").text if Invoice_Data.find("NDHDon/NBan/MST")!=None else "",
-        seller_address=Invoice_Data.find("NDHDon/NBan/DChi").text if Invoice_Data.find("NDHDon/NBan/DChi")!=None else "",
-        seller_phone=Invoice_Data.find("NDHDon/NBan/SDThoai").text if Invoice_Data.find("NDHDon/NBan/SDThoai")!=None else "",
-        seller_bank_code=Invoice_Data.find("NDHDon/NBan/STKNHang").text if Invoice_Data.find("NDHDon/NBan/STKNHang")!=None else "",
-        seller_bank_name=Invoice_Data.find("NDHDon/NBan/TNHang").text if Invoice_Data.find("NDHDon/NBan/TNHang")!=None else "",
-        # Thông tin người mua
-        buyer_name=Invoice_Data.find("NDHDon/NMua/Ten").text if Invoice_Data.find("NDHDon/NMua/Ten")!=None else ""
-        buyer_tax_code=Invoice_Data.find("NDHDon/NMua/MST").text if Invoice_Data.find("NDHDon/NMua/MST")!=None else ""
-        buyer_address=Invoice_Data.find("NDHDon/NMua/DChi").text if Invoice_Data.find("NDHDon/NMua/DChi")!=None else "",
-        buyer_name1=Invoice_Data.find("NDHDon/NMua/HVTNMHang").text if Invoice_Data.find("NDHDon/NMua/HVTNMHang")!=None else "",
-        # Record đơn hàng
-        record1=[]
-        for record in Invoice_Data.findall(".//HHDVu"):
-            record1.append({
-                "No":record.find("STT").text if record.find("STT").text else "",
-                "Code": str(record.find("MHHDVu").text) if record.find("MHHDVu")!=None else "",
-                "Name": record.find("THHDVu").text if record.find("THHDVu")!=None else "",
-                "Unit":record.find("DVTinh").text if record.find("DVTinh")!=None else "",
-                "Quantity":record.find("SLuong").text if record.find("SLuong")!=None else "",
-                "Price":record.find("DGia").text if record.find("DGia")!=None else 0,
-                "Discount_percent":record.find("TLCKhau").text if record.find("TLCKhau")!=None else 0,
-                "Discount_total":record.find("STCKhau").text if record.find("STCKhau")!=None else 0,
-                "Total_price":record.find("ThTien").text if record.find("ThTien")!=None else 0,
-                "VAT":record.find("TSuat").text if record.find("TSuat")!=None else 0,
-            })
-        # Tổng tiền
-        total_VAT=Invoice_Data.find("TToan/TgTThue") if Invoice_Data.find("TToan/TgTThue")!=None else 0,
-        total=Invoice_Data.find("TToan/TgTCThue") if Invoice_Data.find("TToan/TgTCThue")!=None else 0,
-        total_after_VAT=Invoice_Data.find("TToan/TgTTTBSo") if Invoice_Data.find("TToan/TgTTTBSo")!=None else 0
-        
-        return {
-            "serial":serial,
-            "invoice_No":invoice_No[0],
-            "date_create":date_create[0],
-            "currency":currency[0],
-            "seller_name":seller_name[0],
-            "seller_tax_code":seller_tax_code[0],
-            "seller_address":seller_address[0],
-            "seller_phone":seller_phone[0],
-            "seller_bank_code":seller_bank_code[0],
-            "seller_bank_name":seller_bank_name[0],
-            "buyer_name":buyer_name,
-            "buyer_name1":buyer_name1,
-            "buyer_tax_code":buyer_tax_code[0] if buyer_tax_code!=None else "",
-            "buyer_address":buyer_address[0] if buyer_address!=None else "",
-            "invoice_line":record1,
-            "total_VAT":total_VAT[0],
-            "total":total[0],
-            "total_after_VAT":total_after_VAT
-        }
-
+            # Thông tin người bán            
+            seller_name=Invoice_Data.find("NDHDon/NBan/Ten").text if Invoice_Data.find("NDHDon/NBan/Ten")!=None else "",
+            seller_tax_code=Invoice_Data.find("NDHDon/NBan/MST").text if Invoice_Data.find("NDHDon/NBan/MST")!=None else "",
+            seller_address=Invoice_Data.find("NDHDon/NBan/DChi").text if Invoice_Data.find("NDHDon/NBan/DChi")!=None else "",
+            seller_phone=Invoice_Data.find("NDHDon/NBan/SDThoai").text if Invoice_Data.find("NDHDon/NBan/SDThoai")!=None else "",
+            seller_bank_code=Invoice_Data.find("NDHDon/NBan/STKNHang").text if Invoice_Data.find("NDHDon/NBan/STKNHang")!=None else "",
+            seller_bank_name=Invoice_Data.find("NDHDon/NBan/TNHang").text if Invoice_Data.find("NDHDon/NBan/TNHang")!=None else "",
+            # Thông tin người mua
+            buyer_name=Invoice_Data.find("NDHDon/NMua/Ten").text if Invoice_Data.find("NDHDon/NMua/Ten")!=None else ""
+            buyer_tax_code=Invoice_Data.find("NDHDon/NMua/MST").text if Invoice_Data.find("NDHDon/NMua/MST")!=None else ""
+            buyer_address=Invoice_Data.find("NDHDon/NMua/DChi").text if Invoice_Data.find("NDHDon/NMua/DChi")!=None else "",
+            buyer_name1=Invoice_Data.find("NDHDon/NMua/HVTNMHang").text if Invoice_Data.find("NDHDon/NMua/HVTNMHang")!=None else "",
+            # Record đơn hàng
+            record1=[]
+            for record in Invoice_Data.findall(".//HHDVu"):
+                record1.append({
+                    "No":record.find("STT").text if record.find("STT").text else "",
+                    "Code": str(record.find("MHHDVu").text) if record.find("MHHDVu")!=None else "",
+                    "Name": record.find("THHDVu").text if record.find("THHDVu")!=None else "",
+                    "Unit":record.find("DVTinh").text if record.find("DVTinh")!=None else "",
+                    "Quantity":record.find("SLuong").text if record.find("SLuong")!=None else "",
+                    "Price":record.find("DGia").text if record.find("DGia")!=None else 0,
+                    "Discount_percent":record.find("TLCKhau").text if record.find("TLCKhau")!=None else 0,
+                    "Discount_total":record.find("STCKhau").text if record.find("STCKhau")!=None else 0,
+                    "Total_price":record.find("ThTien").text if record.find("ThTien")!=None else 0,
+                    "VAT":record.find("TSuat").text if record.find("TSuat")!=None else 0,
+                })
+            # Tổng tiền
+            total_VAT=Invoice_Data.find("TToan/TgTThue") if Invoice_Data.find("TToan/TgTThue")!=None else 0,
+            total=Invoice_Data.find("TToan/TgTCThue") if Invoice_Data.find("TToan/TgTCThue")!=None else 0,
+            total_after_VAT=Invoice_Data.find("TToan/TgTTTBSo") if Invoice_Data.find("TToan/TgTTTBSo")!=None else 0
+            
+            return {
+                "serial":serial,
+                "invoice_No":invoice_No[0],
+                "date_create":date_create[0],
+                "currency":currency[0],
+                "seller_name":seller_name[0],
+                "seller_tax_code":seller_tax_code[0],
+                "seller_address":seller_address[0],
+                "seller_phone":seller_phone[0],
+                "seller_bank_code":seller_bank_code[0],
+                "seller_bank_name":seller_bank_name[0],
+                "buyer_name":buyer_name,
+                "buyer_name1":buyer_name1,
+                "buyer_tax_code":buyer_tax_code[0] if buyer_tax_code!=None else "",
+                "buyer_address":buyer_address[0] if buyer_address!=None else "",
+                "invoice_line":record1,
+                "total_VAT":total_VAT[0],
+                "total":total[0],
+                "total_after_VAT":total_after_VAT
+            }
+        except:
+            return False
     # endregion
     
     # region Get data PDF format
-    def load_invoice_PDF(self,force_write=False):
+    def load_invoice_PDF(self,data_attachment,force_write=False):
         self.ensure_one()
-        attachments = self.message_main_attachment_id
-        if attachments.exists():
-            data_attachments=[x.datas.decode('utf-8') for x in attachments]
-            for data_attachment in data_attachments:
-                data_text=self.convert_PDF_to_Text(data_attachment)
-                data_convert=self.chatGPT_convert_Text_to_JSON(data_text)
+        data_text=self.convert_PDF_to_Text(data_attachment)
+        data_convert=self.chatGPT_convert_Text_to_JSON(data_text)
+        if data_convert==False:
+            return False
+        self.mapping_invoice_from_data(data_convert,'PDF',force_write=force_write)
+        return True
 
-                self.mapping_invoice_from_data(data_convert,'PDF',force_write=force_write)
-    
     # Chuyển từ PDF sang text
     def convert_PDF_to_Text(self,pdf_file):
         binary_data = base64.b64decode(pdf_file)
@@ -364,28 +356,41 @@ class AccountMove(models.Model):
         try:
             ICP = self.env['ir.config_parameter'].sudo()
             key=ICP.get_param('GPT_digital.openapi_api_key')
+            gpt_model_id = ICP.get_param('GPT_digital.chatgp_model')
             
+            gpt_model = 'gpt-3.5-turbo'
+            if gpt_model_id:
+                gpt_model = self.env['chatgpt.model'].browse(int(gpt_model_id)).name
+
             openai.api_key = key
-            data_message="Mapping data from text to json "+text+"for format "+json_format +" if many 'seller_bank_code' get first"
+            data_message="Mapping data from text to json "+text+"for format "+json_format +" if many 'seller_bank_code' get first and if text is not invoice return json" + """{"is_invoice":False}"""
             messages = [
                 {"role": "system", "content": data_message},
             ]
+            print("INPUT : "+data_message)
             # Make the API call
+            #gpt-4-32k-0314 gpt-3.5-turbo gpt-3.5-turbo-0301
+            
             response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
+                model=gpt_model,
                 messages=messages
             )
-        
+            
             # Get the assistant's reply
             reply = response['choices'][0]['message']['content']
-            return json.loads(reply)
-        # except openai.error.AuthenticationError:
-        #     raise UserError(_('API key has expired.'))
-        except:
+            print("OUTPUT : "+reply)
+            data=json.loads(reply)
+            if data.get("is_invoice")==False:
+                return False
+            return data
+        except openai.error.AuthenticationError:
+            raise UserError(_('The API key for Chat GPT may have expired or does not exist. Please update your API key.'))
+        except Exception as e:
             if key=="" or key==None or key==False:
-                raise UserError(_('API key for ChatGPT is not found.'))
+                raise UserError(_('API key for ChatGPT is not found. Please update your API key.'))
             else:
-                raise UserError(_('An error occurred during the process, please try again.'))
+                raise UserError(_(e))
+            
 
     # endregion
 
@@ -447,25 +452,62 @@ class AccountMove(models.Model):
                 })
     # Sự kiện Diligital
     def update_data_invoice(self):
-        attachments = self.message_main_attachment_id
+        Attachment = self.env['ir.attachment']
+        attachments = Attachment.search([('res_model', '=', 'account.move'), ('res_id', '=', self.id)])
         
         if attachments.exists():
             data_attachments=[x.datas.decode('utf-8') for x in attachments]
-            
-            data_attachment=data_attachments[0]
-            binary_data = base64.b64decode(data_attachment)
-            file_format=self.get_file_format(binary_data)
-            file_format=file_format.lower()
-            if "pdf" in file_format:
-                self.load_invoice_PDF(force_write=False)
-            elif "xml" in file_format or file_format=="text/plain":
-                self.load_invoice_XML(force_write=False)
-            else:
-                raise UserError(_('The file format must be XML or PDF.'))
+            # Xử lý 1 file như bình thường
+            if len(data_attachments)==1:
+                data_attachment=data_attachments[0]
+                binary_data = base64.b64decode(data_attachment)
+                file_format=self.get_file_format(binary_data)
+                file_format=file_format.lower()
+                if "pdf" in file_format:
+                    is_create=self.load_invoice_PDF(data_attachment,force_write=False)
+                    if is_create==False:
+                        raise UserError(_("The attached file is not an invoice. Please select a different attachment and try again!"))
+                elif "xml" in file_format or file_format=="text/plain":
+                    is_create=self.load_invoice_XML(data_attachment,force_write=False)
+                    if is_create==False:
+                        raise UserError(_("The attached file is not an invoice or has an unsupported structure. Please select a different attachment and try again."))
+                        
+                else:
+                    raise UserError(_('The file format must be XML or PDF.'))
+            # Xử lý nhiều file
+            elif len(data_attachments)>1:
+                invoice_xml=True
+                invoice_pdf=True
+                # Chạy một vòng tất cả các hóa đơn xml
+                for data_attachment in data_attachments:
+                    binary_data = base64.b64decode(data_attachment)
+                    file_format=self.get_file_format(binary_data)
+                    if "xml" in file_format or file_format=="text/plain":
+                        is_create=self.load_invoice_XML(data_attachment,force_write=False)
+                        # Nếu tạo hóa đơn thành công dừng chương trinh
+                        if is_create:
+                            invoice_xml=True
+                            break
+                        invoice_xml=False
+                # Tất cả hóa đơn đều XML không chạy được
+                if invoice_xml!=True:
+                    for data_attachment in data_attachments:
+                        binary_data = base64.b64decode(data_attachment)
+                        file_format=self.get_file_format(binary_data)
+                        if "pdf" in file_format:
+                            is_create=self.load_invoice_PDF(data_attachment,force_write=False)
+                        if is_create:
+                            invoice_pdf=True
+                            break
+                        invoice_pdf=False
+                # Tất cả các file đều không phải hóa đơn báo lỗi
+                if invoice_xml==False and invoice_pdf==False:
+                    raise UserError(_('The attached files are not invoices or they have an unsupported structure or they are not PDF or XML files. Please select a different attachment file and try again.'))
         self.log_note()
     # Log cảnh báo lỗi
     def log_note(self):
-        for log in list_log_note:
+        logs=list_log_note
+        for log in logs:
             if log[1]=="notice":
                 note="⚠️ [NOTICE] "+log[0]
             else:
@@ -475,4 +517,5 @@ class AccountMove(models.Model):
                                 message_type='comment',
                                 subtype_xmlid='mail.mt_note',
                                 author_id=odoobot.id)
-        list_log_note=[]
+        list_log_note.clear()
+        

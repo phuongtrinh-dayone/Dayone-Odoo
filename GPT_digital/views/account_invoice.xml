@@ -7,7 +7,7 @@
             <field name="arch" type="xml">
                 <data>
                     <xpath expr="//header//button[@name='button_draft']" position="before">
-                        <button name="update_data_invoice" type="object" string="Update Invoice" attrs="{'invisible':[('state','!=','draft')]}" />
+                        <button name="update_data_invoice" type="object" string="DIGITIZE" attrs="{'invisible':[('state','!=','draft')]}" />
                     </xpath>
                 </data>
             </field>
