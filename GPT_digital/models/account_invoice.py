@@ -24,21 +24,13 @@ json_format="""{
         "seller_phone":"String",
         "seller_bank_code":"String",
         "seller_bank_name":"String",
-        "buyer_name":"String",
-        "buyer_tax_code":"String",
-        "buyer_address":"String",
         "invoice_line":[{
             "No":"Int",
             "Name": "String",
-            "Quantity":"Int",
+            "Quantity":"Double",
             "Price":"Double",
-            "Total_price":"Double",
             "VAT":"Int or 0",
-            "Total_alter_VAT":"Double"
-        }],
-        "total_VAT":"Double",
-        "total":"Double",
-        "total_after_VAT":"Double"
+        }]
     }"""
 
 list_log_note=[]
@@ -133,9 +125,13 @@ class AccountMove(models.Model):
         # ------------------------------------------------
         country_ids=self.env['res.country'].search([])
         choices_country = country_ids.mapped('name')  # Danh sách các lựa chọn tìm kiếm
-        results_country = process.extract(country, choices_country, scorer=fuzz.ratio, limit=1)
+        results_country = process.extract(country, choices_country, scorer=fuzz.ratio, limit=10)
+        results_country=[r for r in results_country if r[1] >= 70]
         matched_country_records = self.env['res.country'].search([('name', 'in', [r[0] for r in results_country])])
-        country_id=matched_country_records[0]
+        if len(matched_country_records)>0:
+            country_id=matched_country_records[0]
+        else:
+            country_id=False
         # ------------------------------------------------  
         if country_id:
             records = self.env['res.country.state'].search([('country_id','=',country_id.id)])
@@ -149,10 +145,11 @@ class AccountMove(models.Model):
             else:
                 return ", ".join(parts[:-1]),False,country_id.id
         return address,False,False 
-    
+
     # Map đơn vị tiền tệ vào hóa đơn
     def _get_currency(self, currency_ocr, partner_id):
         for comparison in ['=ilike', 'ilike']:
+            # Nếu có trong tiền tệ của cty thì hoạt động bình thường
             possible_currencies = self.env["res.currency"].search([
                 '|', '|',
                 ('currency_unit_label', comparison, currency_ocr),
@@ -161,8 +158,21 @@ class AccountMove(models.Model):
             ])
             if possible_currencies:
                 break
+            
             else:
-                list_log_note.append(("No matching currency","notice"))
+                # Nếu đơn vị tiền tệ không tồn tại
+                possible_currencies = self.env["res.currency"].search([
+                '&',
+                ('active','=',False),
+                '|', '|',
+                ('currency_unit_label', comparison, currency_ocr),
+                ('name', comparison, currency_ocr),
+                ('symbol', comparison, currency_ocr),
+            ])
+                if possible_currencies:
+                    break
+                else:
+                    list_log_note.append(("No matching currency","notice"))
 
         partner_last_invoice_currency = partner_id.invoice_ids[:1].currency_id
         if partner_last_invoice_currency in possible_currencies:
@@ -334,7 +344,9 @@ class AccountMove(models.Model):
     # region Get data PDF format
     def load_invoice_PDF(self,data_attachment,force_write=False):
         self.ensure_one()
+        print('-------------------s')
         data_text=self.convert_PDF_to_Text(data_attachment)
+        print(data_text)
         data_convert=self.chatGPT_convert_Text_to_JSON(data_text)
         if data_convert==False:
             return False
@@ -344,15 +356,18 @@ class AccountMove(models.Model):
     # Chuyển từ PDF sang text
     def convert_PDF_to_Text(self,pdf_file):
         binary_data = base64.b64decode(pdf_file)
-        text=""
+        text=[]
+        # Chuyển thành list text
+        # Chuyển thành list json 
         with pdfplumber.open(io.BytesIO(binary_data)) as pdf:
                 for page in pdf.pages:
                     text1 = page.extract_text()
-                    text=text+text1
-        return text
+                    text.append(text1)
+                return text
+        return []
     
     # Chuyển từ tex sang json dùng chatGPT
-    def chatGPT_convert_Text_to_JSON(self,text):
+    def chatGPT_convert_Text_to_JSON(self,text_list):
         try:
             ICP = self.env['ir.config_parameter'].sudo()
             key=ICP.get_param('GPT_digital.openapi_api_key')
@@ -361,97 +376,113 @@ class AccountMove(models.Model):
             gpt_model = 'gpt-3.5-turbo'
             if gpt_model_id:
                 gpt_model = self.env['chatgpt.model'].browse(int(gpt_model_id)).name
-
+            
             openai.api_key = key
-            data_message="Mapping data from text to json "+text+"for format "+json_format +" if many 'seller_bank_code' get first and if text is not invoice return json" + """{"is_invoice":False}"""
-            messages = [
-                {"role": "system", "content": data_message},
-            ]
-            print("INPUT : "+data_message)
-            # Make the API call
-            #gpt-4-32k-0314 gpt-3.5-turbo gpt-3.5-turbo-0301
-            
-            response = openai.ChatCompletion.create(
-                model=gpt_model,
-                messages=messages
-            )
-            
-            # Get the assistant's reply
-            reply = response['choices'][0]['message']['content']
-            print("OUTPUT : "+reply)
-            data=json.loads(reply)
-            if data.get("is_invoice")==False:
-                return False
-            return data
+            list_data=[]
+            for text in text_list:
+                data_message="Mapping data from text to json "+text+"for format "+json_format +" if many 'seller_bank_code' get first and if text is not invoice return json" + """{"is_invoice":False}"""
+                messages = [
+                    {"role": "system", "content": data_message},
+                ]
+                print("INPUT : "+data_message)
+                # Make the API call
+                #gpt-4-32k-0314 gpt-3.5-turbo gpt-3.5-turbo-0301
+                
+                response = openai.ChatCompletion.create(
+                    model=gpt_model,
+                    messages=messages
+                )
+                # Get the assistant's reply
+                reply = response['choices'][0]['message']['content']
+                print("OUTPUT : "+reply)
+                data=json.loads(reply)
+                # Không phải định dạng hóa đơn trả về false
+                if data.get("is_invoice")==False:
+                    return False
+                # Thêm vào list data trả ra
+                list_data.append(data)
+            return list_data
         except openai.error.AuthenticationError:
             raise UserError(_('The API key for Chat GPT may have expired or does not exist. Please update your API key.'))
+        except openai.error.RateLimitError as e:
+            raise UserError(_(e))
+        except openai.error.APIError as e:
+            raise UserError(_(e)) 
         except Exception as e:
             if key=="" or key==None or key==False:
                 raise UserError(_('API key for ChatGPT is not found. Please update your API key.'))
             else:
                 raise UserError(_(e))
-            
-
+        
     # endregion
 
     # Map data vào hóa đơn
-    def mapping_invoice_from_data(self,data,type,force_write=False):
-
-        date_invoice=data['date_create']
-        invoice_id=data['invoice_No']
-        serial=data['serial']
-        results=data['invoice_line']
-        currency=data['currency']
-
-        if not self.partner_id or force_write:
-            partner_id, created = self._get_partner(data)
-            if partner_id:
-                self.partner_id = partner_id
-        
-        context_create_date = fields.Date.context_today(self, self.create_date)
-        if date_invoice=="":
-            list_log_note.append(("No matching date invoice","warning"))
-        if date_invoice!="" and (not self.invoice_date or self.invoice_date == context_create_date or force_write):
-            self.invoice_date = date_invoice
-        
-                
-
-        if (not self.ref or force_write):
-            ref=serial+"/"+invoice_id
-            self.ref = ref
-            if ref=="/":
-                list_log_note.append(("No matching bill reference","notice"))
-
-        if self.quick_edit_mode:
-            self.name = serial+"/"+invoice_id
-        if currency and (self.currency_id == self.company_currency_id or force_write):
-                currency = self._get_currency(currency, self.partner_id)
-                if currency:
-                    self.currency_id = currency
-        # xử lý record line
+    def mapping_invoice_from_data(self,list_data,type,force_write=False):
+        # Clear hết các record của invoice line và nếu hóa đơn quá dài thì chỉ cần thực hiện 1 lần chứ không vào vòng lặp
         if force_write:
             self.invoice_line_ids = [Command.clear()]
         self.invoice_line_ids.unlink()
-        vals_invoice_lines = self._get_invoice_lines(results,type)
-        self.invoice_line_ids = [
-            Command.create({'name': line_vals.pop('name')})
-            for line_vals in vals_invoice_lines
-        ]
-        for line, ocr_line_vals in zip(self.invoice_line_ids[-len(vals_invoice_lines):], vals_invoice_lines):
-                line.tax_ids=False
-                line.write({
-                    'product_id': ocr_line_vals['product'],
-                    'price_unit': ocr_line_vals['price_unit'],
-                    'quantity': ocr_line_vals['quantity'],
-                    'tax_ids':[]
-                })
-                if ocr_line_vals['tax_ids']!=False:
+        for data in list_data:
+            date_invoice=data['date_create']
+            invoice_id=data['invoice_No']
+            serial=data['serial']
+            results=data['invoice_line']
+            currency=data['currency']
+
+            if not self.partner_id or force_write:
+                partner_id, created = self._get_partner(data)
+                if partner_id:
+                    self.partner_id = partner_id
+            
+            context_create_date = fields.Date.context_today(self, self.create_date)
+            if date_invoice=="":
+                list_log_note.append(("No matching date invoice","warning"))
+            if date_invoice!="" and (not self.invoice_date or self.invoice_date == context_create_date or force_write):
+                self.invoice_date = date_invoice
+            
+                    
+
+            if (not self.ref or force_write):
+                ref=serial+"/"+invoice_id
+                self.ref = ref
+                if ref=="/":
+                    list_log_note.append(("No matching bill reference","notice"))
+
+            if self.quick_edit_mode:
+                self.name = serial+"/"+invoice_id
+            if currency and (self.currency_id == self.company_currency_id or force_write):
+                    currency = self._get_currency(currency, self.partner_id)
+                    if currency:
+                        self.currency_id = currency
+            # xử lý record line
+            # ===============================================
+            # if force_write:
+            #     self.invoice_line_ids = [Command.clear()]
+            # self.invoice_line_ids.unlink()
+            # ===============================================
+            vals_invoice_lines = self._get_invoice_lines(results,type)
+            self.invoice_line_ids = [
+                Command.create({'name': line_vals.pop('name')})
+                for line_vals in vals_invoice_lines
+            ]
+            for line, ocr_line_vals in zip(self.invoice_line_ids[-len(vals_invoice_lines):], vals_invoice_lines):
                     line.tax_ids=False
                     line.write({
-                    'tax_ids':[(4, ocr_line_vals['tax_ids'])]
-                })
+                        'product_id': ocr_line_vals['product'],
+                        'price_unit': ocr_line_vals['price_unit'],
+                        'quantity': ocr_line_vals['quantity'],
+                        'tax_ids':[]
+                    })
+                    if ocr_line_vals['tax_ids']!=False:
+                        line.tax_ids=False
+                        line.write({
+                        'tax_ids':[(4, ocr_line_vals['tax_ids'])]
+                    })
+    
+    
     # Sự kiện Diligital
     def update_data_invoice(self):
+        list_log_note.clear()
         Attachment = self.env['ir.attachment']
         attachments = Attachment.search([('res_model', '=', 'account.move'), ('res_id', '=', self.id)])
         
