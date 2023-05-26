@@ -317,7 +317,7 @@ class AccountMove(models.Model):
             total=Invoice_Data.find("TToan/TgTCThue") if Invoice_Data.find("TToan/TgTCThue")!=None else 0,
             total_after_VAT=Invoice_Data.find("TToan/TgTTTBSo") if Invoice_Data.find("TToan/TgTTTBSo")!=None else 0
             
-            return {
+            return [{
                 "serial":serial,
                 "invoice_No":invoice_No[0],
                 "date_create":date_create[0],
@@ -336,7 +336,7 @@ class AccountMove(models.Model):
                 "total_VAT":total_VAT[0],
                 "total":total[0],
                 "total_after_VAT":total_after_VAT
-            }
+            }]
         except:
             return False
     # endregion
