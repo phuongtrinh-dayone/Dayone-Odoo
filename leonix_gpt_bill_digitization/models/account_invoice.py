@@ -9,7 +9,6 @@ import base64
 import logging
 import openai
 import magic
-from geopy.geocoders import Nominatim
 from fuzzywuzzy import fuzz, process
 import xml.etree.ElementTree as ET
 
