@@ -9,6 +9,7 @@ import base64
 import logging
 import openai
 import magic
+from geopy.geocoders import Nominatim
 from fuzzywuzzy import fuzz, process
 import xml.etree.ElementTree as ET
 
@@ -17,6 +18,7 @@ json_format="""{
         "serial":"String",
         "invoice_No":"String",
         "date_create":"%Y-%m-%d",
+        "due_date":"%Y-%m-%d",
         "currency":"String",
         "seller_name":"String",
         "seller_tax_code":"String",
@@ -24,6 +26,8 @@ json_format="""{
         "seller_phone":"String",
         "seller_bank_code":"String",
         "seller_bank_name":"String",
+        "buyer_name":"String",
+        "buyer_address:"String",
         "invoice_line":[{
             "No":"Int",
             "Name": "String",
@@ -39,10 +43,43 @@ class AccountMove(models.Model):
     _inherit = ['account.move']
 
 
-    # Dừng hoạt động cron hóa đơn theo IPA của odoo 
-    @api.model
+    # Cron file xml bo qua PDF
+    def cron_xml(self):
+        Attachment = self.env['ir.attachment']
+        attachments = Attachment.search([('res_model', '=', 'account.move'), ('res_id', '=', self.id)])
+        if attachments.exists():
+            data_attachments=[x.datas.decode('utf-8') for x in attachments]
+            # Neu co nhieu file hoac ko co file
+            if len(data_attachments)>1 or len(data_attachments)<1:
+                return False
+            else:
+                data_attachment=data_attachments[0]
+                binary_data = base64.b64decode(data_attachment)
+                file_format=self.get_file_format(binary_data)
+                file_format=file_format.lower()
+                # neu file co dinh dang PDF bo qua
+                if "pdf" in file_format:
+                    return False
+                else:
+                    self.update_data_invoice()
+                    return True
+
+
+
+
     def _cron_parse(self):
-        pass
+        for rec in self.search([('extract_state', '=', 'waiting_upload'),('state','=','draft')]):
+            try:
+                with self.env.cr.savepoint(flush=False):
+                    rec.cron_xml()
+                    # We handle the flush manually so that if an error occurs, e.g. a concurrent update error,
+                    # the savepoint will be rollbacked when exiting the context manager
+                    self.env.cr.flush()
+                self.env.cr.commit()
+            except (IntegrityError, OperationalError) as e:
+                pass
+
+        
 
     
     # region Xác định file đầu vào
@@ -101,7 +138,10 @@ class AccountMove(models.Model):
         
         # Create new Partner
         if vat_number:
-            street ,state ,country = self.parse_address(data["seller_address"])
+            if data.get("in_VN_Invoice")==True:
+                street ,state ,country = self.parse_address(data["seller_address"])
+            else:
+                street ,state ,country = self.parse_address_PDF(data["seller_address"])
             partner_id=self.env['res.partner'].create({
                     "name":data["seller_name"],
                     "street":street,
@@ -117,8 +157,8 @@ class AccountMove(models.Model):
     def get_full_address(self,address):
         try:
             ICP = self.env['ir.config_parameter'].sudo()
-            key=ICP.get_param('GPT_digital.openapi_api_key')
-            gpt_model_id = ICP.get_param('GPT_digital.chatgp_model')
+            key=ICP.get_param('leonix_gpt_bill_digitization.openapi_api_key')
+            gpt_model_id = ICP.get_param('leonix_gpt_bill_digitization.chatgp_model')
             
             gpt_model = 'gpt-3.5-turbo'
             if gpt_model_id:
@@ -147,7 +187,7 @@ class AccountMove(models.Model):
             else:
                 raise UserError(_(e))
 
-    def parse_address(self,address):
+    def parse_address_PDF(self,address):
         # Tách địa chỉ cũ
         parts1 = address.split(", ")
         street1 = ", ".join(parts1[:-2])
@@ -177,6 +217,30 @@ class AccountMove(models.Model):
                 return street1, matched_records[0].id, country_id.id
             else:
                 return ", ".join(parts1[:-1]),False,country_id.id
+        return address,False,False 
+
+    def parse_address(self,address):
+        parts = address.split(", ")
+        street = ", ".join(parts[:-2])
+        state = parts[-2]
+        # ------------------------------------------------
+        country_ids=self.env['res.country'].search([("name",'=',"Việt Nam")])
+        if len(country_ids)>0:
+            country_id=country_ids[0]
+        else:
+            country_id=False
+        # ------------------------------------------------  
+        if country_id:
+            records = self.env['res.country.state'].search([('country_id','=',country_id.id)])
+            choices = records.mapped('name')  # Danh sách các lựa chọn tìm kiếm
+            results = process.extract(state, choices, scorer=fuzz.ratio, limit=10)
+            
+            results=[r for r in results if r[1] >= 70]
+            matched_records = self.env['res.country.state'].search([('name', 'in', [r[0] for r in results])])
+            if len(matched_records)>0:
+                return street, matched_records[0].id, country_id.id
+            else:
+                return ", ".join(parts[:-1]),False,country_id.id
         return address,False,False 
 
     # Map đơn vị tiền tệ vào hóa đơn
@@ -263,12 +327,12 @@ class AccountMove(models.Model):
             if type=="purchase":
                 tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'][:-1])),('type_tax_use','=','purchase')],limit=1)
                 if not tax_id:
-                    list_log_note.append(("No matching taxes","warning"))
+                    list_log_note.append(("No matching taxes "+ data['VAT'],"warning"))
                 return tax_id.id
             elif type=="sale":
                 tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'][:-1])),('type_tax_use','=','sale')],limit=1)
                 if not tax_id:
-                    list_log_note.append(("No matching taxes","warning"))
+                    list_log_note.append(("No matching taxes "+ data['VAT'],"warning"))
                 return tax_id.id
         else:
             return False
@@ -278,13 +342,13 @@ class AccountMove(models.Model):
         if type=="purchase":
             tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'])),('type_tax_use','=','purchase')],limit=1)
             if not tax_id and int(data['VAT'])!=0 :
-                list_log_note.append(("No matching taxes","warning"))
+                list_log_note.append(("No matching taxes "+ data['VAT'],"warning"))
             return tax_id.id
         elif type=="sale":
             tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'])),('type_tax_use','=','sale')],limit=1)
             # Neu co thue va thue do khac 0
             if not tax_id and int(data['VAT'])!=0 :
-                list_log_note.append(("No matching taxes","warning"))
+                list_log_note.append(("No matching taxes "+ data['VAT'],"warning"))
             return tax_id.id
         else:
             return False
@@ -309,8 +373,10 @@ class AccountMove(models.Model):
             # Create the XML element tree
             root = ET.fromstring(decoded_data)
             Invoice_Data=root.find(".//DLHDon")
-
+            
             # Thông tin tổng quát
+
+            in_VN_Invoice=True if Invoice_Data!=None else False
             serial1=Invoice_Data.find("TTChung/KHMSHDon").text if Invoice_Data.find("TTChung/KHMSHDon")!=None else""
             serial2=Invoice_Data.find("TTChung/KHHDon").text if Invoice_Data.find("TTChung/KHHDon")!=None else""
             serial=serial1+serial2
@@ -351,6 +417,7 @@ class AccountMove(models.Model):
             total_after_VAT=Invoice_Data.find("TToan/TgTTTBSo") if Invoice_Data.find("TToan/TgTTTBSo")!=None else 0
             
             return [{
+                "in_VN_Invoice":in_VN_Invoice,
                 "serial":serial,
                 "invoice_No":invoice_No[0],
                 "date_create":date_create[0],
@@ -401,8 +468,8 @@ class AccountMove(models.Model):
     def chatGPT_convert_Text_to_JSON(self,text_list):
         try:
             ICP = self.env['ir.config_parameter'].sudo()
-            key=ICP.get_param('GPT_digital.openapi_api_key')
-            gpt_model_id = ICP.get_param('GPT_digital.chatgp_model')
+            key=ICP.get_param('leonix_gpt_bill_digitization.openapi_api_key')
+            gpt_model_id = ICP.get_param('leonix_gpt_bill_digitization.chatgp_model')
             
             gpt_model = 'gpt-3.5-turbo'
             if gpt_model_id:
@@ -457,8 +524,10 @@ class AccountMove(models.Model):
             date_invoice=data['date_create']
             invoice_id=data['invoice_No']
             serial=data['serial']
+            print(serial)
             results=data['invoice_line']
             currency=data['currency']
+            due_date=data.get("due_date") and data.get("due_date") or ""
 
             if not self.partner_id or force_write:
                 partner_id, created = self._get_partner(data)
@@ -470,14 +539,18 @@ class AccountMove(models.Model):
                 list_log_note.append(("No matching date invoice","warning"))
             if date_invoice!="" and (not self.invoice_date or self.invoice_date == context_create_date or force_write):
                 self.invoice_date = date_invoice
-            
+            if due_date!="" and (not self.invoice_date_due or self.invoice_date_due == context_create_date or force_write):
+                self.invoice_date_due = due_date
                     
 
             if (not self.ref or force_write):
-                ref=serial+"/"+invoice_id
-                self.ref = ref
-                if ref=="/":
-                    list_log_note.append(("No matching bill reference","notice"))
+                if serial=="":
+                    self.ref=invoice_id
+                else:
+                    ref=serial+"/"+invoice_id
+                    self.ref = ref
+                    if ref=="/":
+                        list_log_note.append(("No matching bill reference","notice"))
 
             if self.quick_edit_mode:
                 self.name = serial+"/"+invoice_id
