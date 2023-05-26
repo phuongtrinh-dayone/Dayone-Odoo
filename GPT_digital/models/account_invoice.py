@@ -84,9 +84,6 @@ class AccountMove(models.Model):
         vat_number=data['seller_tax_code']
         iban=data['seller_bank_code']
         client=data['seller_name']
-
-        self.parse_address(data["seller_address"])
-
         # Tìm nguời dùng với mã số  thuế
         if vat_number:
             partner_vat = self.find_partner_id_with_vat(vat_number)
@@ -117,12 +114,49 @@ class AccountMove(models.Model):
             return partner_id,True
         return False, False
 
+    def get_full_address(self,address):
+        try:
+            ICP = self.env['ir.config_parameter'].sudo()
+            key=ICP.get_param('GPT_digital.openapi_api_key')
+            gpt_model_id = ICP.get_param('GPT_digital.chatgp_model')
+            
+            gpt_model = 'gpt-3.5-turbo'
+            if gpt_model_id:
+                gpt_model = self.env['chatgpt.model'].browse(int(gpt_model_id)).name
+            
+            openai.api_key = key
+            messages = [
+                    {"role": "system", "content": "change "+address+" to full-address show only full-address" },
+                ]
+            response = openai.ChatCompletion.create(
+                    model=gpt_model,
+                    messages=messages
+                )
+                # Get the assistant's reply
+            reply = response['choices'][0]['message']['content']
+            return reply
+        except openai.error.AuthenticationError:
+            raise UserError(_('The API key for Chat GPT may have expired or does not exist. Please update your API key.'))
+        except openai.error.RateLimitError as e:
+            raise UserError(_(e))
+        except openai.error.APIError as e:
+            raise UserError(_(e)) 
+        except Exception as e:
+            if key=="" or key==None or key==False:
+                raise UserError(_('API key for ChatGPT is not found. Please update your API key.'))
+            else:
+                raise UserError(_(e))
+
     def parse_address(self,address):
-        parts = address.split(", ")
-        street = ", ".join(parts[:-2])
+        # Tách địa chỉ cũ
+        parts1 = address.split(", ")
+        street1 = ", ".join(parts1[:-2])
+        # Chuyển địa chỉ thành địa chỉ đầy đủ
+        address1=self.get_full_address(address=address)
+        parts = address1.split(", ")
         state = parts[-2]
         country = parts[-1]
-        # ------------------------------------------------
+        # ------------------Đoán quốc gia----------------------
         country_ids=self.env['res.country'].search([])
         choices_country = country_ids.mapped('name')  # Danh sách các lựa chọn tìm kiếm
         results_country = process.extract(country, choices_country, scorer=fuzz.ratio, limit=10)
@@ -132,18 +166,17 @@ class AccountMove(models.Model):
             country_id=matched_country_records[0]
         else:
             country_id=False
-        # ------------------------------------------------  
+        # -----------------Đoán tỉnh thành-----------------------  
         if country_id:
             records = self.env['res.country.state'].search([('country_id','=',country_id.id)])
             choices = records.mapped('name')  # Danh sách các lựa chọn tìm kiếm
             results = process.extract(state, choices, scorer=fuzz.ratio, limit=10)
-            
-            results=[r for r in results if r[1] >= 70]
+            results=[r for r in results if r[1] >= 51]
             matched_records = self.env['res.country.state'].search([('name', 'in', [r[0] for r in results])])
             if len(matched_records)>0:
-                return street, matched_records[0].id, country_id.id
+                return street1, matched_records[0].id, country_id.id
             else:
-                return ", ".join(parts[:-1]),False,country_id.id
+                return ", ".join(parts1[:-1]),False,country_id.id
         return address,False,False 
 
     # Map đơn vị tiền tệ vào hóa đơn
@@ -344,9 +377,7 @@ class AccountMove(models.Model):
     # region Get data PDF format
     def load_invoice_PDF(self,data_attachment,force_write=False):
         self.ensure_one()
-        print('-------------------s')
         data_text=self.convert_PDF_to_Text(data_attachment)
-        print(data_text)
         data_convert=self.chatGPT_convert_Text_to_JSON(data_text)
         if data_convert==False:
             return False
@@ -485,7 +516,6 @@ class AccountMove(models.Model):
         list_log_note.clear()
         Attachment = self.env['ir.attachment']
         attachments = Attachment.search([('res_model', '=', 'account.move'), ('res_id', '=', self.id)])
-        
         if attachments.exists():
             data_attachments=[x.datas.decode('utf-8') for x in attachments]
             # Xử lý 1 file như bình thường
