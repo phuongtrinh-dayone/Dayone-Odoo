@@ -18,6 +18,8 @@ json_format="""{
         "invoice_No":"String",
         "date_create":"%Y-%m-%d",
         "due_date":"%Y-%m-%d",
+        "term":"String" is term of due day,
+        "full_term_conditions":"String",
         "currency":"String",
         "seller_name":"String",
         "seller_tax_code":"String",
@@ -30,10 +32,11 @@ json_format="""{
         "invoice_line":[{
             "No":"Int",
             "Name": "String",
-            "Quantity":"Double",
+            "Quantity":"Double" if have ',' remove ',' ,
             "Price":"Double",
             "VAT":"Int or 0",
-        }]
+        }],
+        "total_after_VAT":"Double"
     }"""
 
 list_log_note=[]
@@ -136,23 +139,31 @@ class AccountMove(models.Model):
             return self.env["res.partner"].browse(partner_id), False
         
         # Create new Partner
-        if vat_number:
-            if data.get("in_VN_Invoice")==True:
-                street ,state ,country = self.parse_address(data["seller_address"])
-            else:
-                street ,state ,country = self.parse_address_PDF(data["seller_address"])
-            partner_id=self.env['res.partner'].create({
-                    "name":data["seller_name"],
-                    "street":street,
-                    "state_id":state,
-                    "is_company":True,
-                    "country_id":country,
-                    "vat":data["seller_tax_code"],
-                    "phone":data["seller_phone"],
-                })
-            return partner_id,True
+        if data.get("in_VN_Invoice")==True:
+            street ,state ,country,zip = self.parse_address_XML(data["seller_address"])
+        else:
+            street ,state ,country,zip = self.parse_address_PDF(data["seller_address"])
+        partner_id=self.env['res.partner'].create({
+                "name":data["seller_name"],
+                "street":street,
+                "state_id":state,
+                "is_company":True,
+                "country_id":country,
+                "zip":zip,
+                "vat":data["seller_tax_code"],
+                "phone":data["seller_phone"],
+            })
+        return partner_id,True
         return False, False
 
+    # Get Term
+    def _get_term(self,data):
+        term_id=self.env['account.payment.term'].search([('name','ilike',data)])
+        if len(term_id)>=1:
+            return term_id[0].id
+        list_log_note.append(("No matching term "+ str(data),"warning"))
+        return False
+    # def get_address_by_GPT
     def get_full_address(self,address):
         try:
             ICP = self.env['ir.config_parameter'].sudo()
@@ -165,7 +176,7 @@ class AccountMove(models.Model):
             
             openai.api_key = key
             messages = [
-                    {"role": "system", "content": "change "+address+" to full-address show only full-address" },
+                    {"role": "system", "content": "pharse this address to odoo contact field and return json format{street1:'String',street2:'String',state'String' is city name,zip :'String or None', country:'String' is nation code} with "+address +" and return json"},
                 ]
             response = openai.ChatCompletion.create(
                     model=gpt_model,
@@ -173,34 +184,31 @@ class AccountMove(models.Model):
                 )
                 # Get the assistant's reply
             reply = response['choices'][0]['message']['content']
-            return reply
+            return json.loads(reply)
+        
         except openai.error.AuthenticationError:
             raise UserError(_('The API key for Chat GPT may have expired or does not exist. Please update your API key.'))
-        except openai.error.RateLimitError as e:
-            raise UserError(_(e))
-        except openai.error.APIError as e:
-            raise UserError(_(e)) 
         except Exception as e:
             if key=="" or key==None or key==False:
                 raise UserError(_('API key for ChatGPT is not found. Please update your API key.'))
             else:
-                raise UserError(_(e))
+                raise UserError(_("ChatGPT is error. Try again"))
 
     def parse_address_PDF(self,address):
-        # Tách địa chỉ cũ
-        parts1 = address.split(", ")
-        street1 = ", ".join(parts1[:-2])
         # Chuyển địa chỉ thành địa chỉ đầy đủ
         address1=self.get_full_address(address=address)
-        parts = address1.split(", ")
-        state = parts[-2]
-        country = parts[-1]
-        # ------------------Đoán quốc gia----------------------
+        street1=address1.get('street1') and address1.get('street1') or "",
+        street2=address1.get('street2') and address1.get('street2') or "",
+        state = address1.get('state') and address1.get('state') or "",
+        country = address1.get('country') and address1.get('country') or "",
+        zip=address1.get('zip') and address1.get('zip') or False
+        # # ------------------Đoán quốc gia----------------------
         country_ids=self.env['res.country'].search([])
-        choices_country = country_ids.mapped('name')  # Danh sách các lựa chọn tìm kiếm
-        results_country = process.extract(country, choices_country, scorer=fuzz.ratio, limit=10)
+        choices_country = country_ids.mapped('code')  # Danh sách các lựa chọn tìm kiếm
+        results_country = process.extract(str(country[0]), choices_country, scorer=fuzz.ratio, limit=10)
         results_country=[r for r in results_country if r[1] >= 70]
-        matched_country_records = self.env['res.country'].search([('name', 'in', [r[0] for r in results_country])])
+        matched_country_records = self.env['res.country'].search([('code', 'in', [r[0] for r in results_country])])
+
         if len(matched_country_records)>0:
             country_id=matched_country_records[0]
         else:
@@ -209,21 +217,22 @@ class AccountMove(models.Model):
         if country_id:
             records = self.env['res.country.state'].search([('country_id','=',country_id.id)])
             choices = records.mapped('name')  # Danh sách các lựa chọn tìm kiếm
-            results = process.extract(state, choices, scorer=fuzz.ratio, limit=10)
-            results=[r for r in results if r[1] >= 51]
+            results = process.extract(str(state[0]), choices, scorer=fuzz.ratio, limit=10)
+            results=[r for r in results if r[1] >= 70]
+            
             matched_records = self.env['res.country.state'].search([('name', 'in', [r[0] for r in results])])
             if len(matched_records)>0:
-                return street1, matched_records[0].id, country_id.id
+                return street1[0]+ ", " + street2[0] , matched_records[0].id, country_id.id, zip
             else:
-                return ", ".join(parts1[:-1]),False,country_id.id
-        return address,False,False 
+                return street1[0]+" "+street2[0]+", "+state[0],False,country_id.id,zip
+        return address,False,False ,zip
 
-    def parse_address(self,address):
+    def parse_address_XML(self,address):
         parts = address.split(", ")
         street = ", ".join(parts[:-2])
         state = parts[-2]
         # ------------------------------------------------
-        country_ids=self.env['res.country'].search([("name",'=',"Việt Nam")])
+        country_ids=self.env['res.country'].with_context(lang='vi_VN').search([("name",'=',"Việt Nam")])
         if len(country_ids)>0:
             country_id=country_ids[0]
         else:
@@ -235,12 +244,13 @@ class AccountMove(models.Model):
             results = process.extract(state, choices, scorer=fuzz.ratio, limit=10)
             
             results=[r for r in results if r[1] >= 70]
-            matched_records = self.env['res.country.state'].search([('name', 'in', [r[0] for r in results])])
+            matched_records = self.env['res.country.state'].with_context(lang='vi_VN').search([('name', 'in', [r[0] for r in results])])
             if len(matched_records)>0:
-                return street, matched_records[0].id, country_id.id
+                return street, matched_records[0].id, country_id.id,False
             else:
-                return ", ".join(parts[:-1]),False,country_id.id
-        return address,False,False 
+                return ", ".join(parts[:-1]),False,country_id.id,False
+        # Street1 , state, country, Zip
+        return address ,False ,False ,False
 
     # Map đơn vị tiền tệ vào hóa đơn
     def _get_currency(self, currency_ocr, partner_id):
@@ -282,7 +292,7 @@ class AccountMove(models.Model):
         records = self.env['product.product'].search([])
         choices = records.mapped('name')  # Danh sách các lựa chọn tìm kiếm
         results = process.extract(data['Name'], choices, scorer=fuzz.ratio, limit=10)
-        results=[r for r in results if r[1] >= 70]
+        results=[r for r in results if r[1] >= 65]
         matched_records = self.env['product.product'].search([('name', 'in', [r[0] for r in results])])
         if(len(matched_records)>0):
             return matched_records[0].id
@@ -341,13 +351,13 @@ class AccountMove(models.Model):
         if type=="purchase":
             tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'])),('type_tax_use','=','purchase')],limit=1)
             if not tax_id and int(data['VAT'])!=0 :
-                list_log_note.append(("No matching taxes "+ str(data['VAT']),"warning"))
+                list_log_note.append(("No matching taxes "+ str(data['VAT']) + " %","warning"))
             return tax_id.id
         elif type=="sale":
             tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'])),('type_tax_use','=','sale')],limit=1)
             # Neu co thue va thue do khac 0
             if not tax_id and int(data['VAT'])!=0 :
-                list_log_note.append(("No matching taxes "+ str(data['VAT']),"warning"))
+                list_log_note.append(("No matching taxes "+ str(data['VAT'])+ " %","warning"))
             return tax_id.id
         else:
             return False
@@ -411,10 +421,9 @@ class AccountMove(models.Model):
                     "VAT":record.find("TSuat").text if record.find("TSuat")!=None else 0,
                 })
             # Tổng tiền
-            total_VAT=Invoice_Data.find("TToan/TgTThue") if Invoice_Data.find("TToan/TgTThue")!=None else 0,
-            total=Invoice_Data.find("TToan/TgTCThue") if Invoice_Data.find("TToan/TgTCThue")!=None else 0,
-            total_after_VAT=Invoice_Data.find("TToan/TgTTTBSo") if Invoice_Data.find("TToan/TgTTTBSo")!=None else 0
-            
+            total_VAT=Invoice_Data.find("NDHDon/TToan/TgTThue").text  if Invoice_Data.find("NDHDon/TToan/TgTThue")!=None else 0,
+            total=Invoice_Data.find("NDHDon/TToan/TgTCThue").text  if Invoice_Data.find("NDHDon/TToan/TgTCThue")!=None else 0,
+            total_after_VAT=Invoice_Data.find("NDHDon/TToan/TgTTTBSo").text  if Invoice_Data.find("NDHDon/TToan/TgTTTBSo")!=None else 0
             return [{
                 "in_VN_Invoice":in_VN_Invoice,
                 "serial":serial,
@@ -445,6 +454,7 @@ class AccountMove(models.Model):
         self.ensure_one()
         data_text=self.convert_PDF_to_Text(data_attachment)
         data_convert=self.chatGPT_convert_Text_to_JSON(data_text)
+        print(data_convert)
         if data_convert==False:
             return False
         self.mapping_invoice_from_data(data_convert,'PDF',force_write=force_write)
@@ -510,7 +520,6 @@ class AccountMove(models.Model):
                 raise UserError(_('API key for ChatGPT is not found. Please update your API key.'))
             else:
                 raise UserError(_(e))
-        
     # endregion
 
     # Map data vào hóa đơn
@@ -523,10 +532,12 @@ class AccountMove(models.Model):
             date_invoice=data['date_create']
             invoice_id=data['invoice_No']
             serial=data['serial']
-            print(serial)
             results=data['invoice_line']
             currency=data['currency']
+            amount_total=data['total_after_VAT']
             due_date=data.get("due_date") and data.get("due_date") or ""
+            term=data.get("term") and data.get("term") or ""
+            term_and_condition=data.get("full_term_conditions") and data.get("full_term_conditions")
 
             if not self.partner_id or force_write:
                 partner_id, created = self._get_partner(data)
@@ -540,8 +551,10 @@ class AccountMove(models.Model):
                 self.invoice_date = date_invoice
             if due_date!="" and (not self.invoice_date_due or self.invoice_date_due == context_create_date or force_write):
                 self.invoice_date_due = due_date
-                    
-
+            if term!="" and (not self.invoice_payment_term_id or force_write):
+                self.invoice_payment_term_id=self._get_term(term)
+            if term_and_condition!="" and (not self.narration or force_write):
+                self.narration=term_and_condition
             if (not self.ref or force_write):
                 if serial=="":
                     self.ref=invoice_id
@@ -581,7 +594,10 @@ class AccountMove(models.Model):
                         line.write({
                         'tax_ids':[(4, ocr_line_vals['tax_ids'])]
                     })
-    
+            # Log NOITICE nếu giá trị của hóa đơn khác với giá trị được odoo tính toán
+            if self.amount_total!=float(amount_total):
+                list_log_note.append(("The total amount in the invoice differs from the calculation in Odoo","warning"))
+
     
     # Sự kiện Diligital
     def update_data_invoice(self):
