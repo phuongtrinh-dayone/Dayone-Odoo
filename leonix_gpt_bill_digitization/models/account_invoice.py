@@ -34,6 +34,7 @@ json_format="""{
             "Name": "String",
             "Quantity":"Double" if have ',' remove ',' ,
             "Price":"Double",
+            "Discount":"Double"
             "VAT":"Int or 0",
         }],
         "total_after_VAT":"Double"
@@ -315,13 +316,14 @@ class AccountMove(models.Model):
             description = il['Name'] if 'Name' in il else "/"
             unit_price = il['Price'] if 'Price' in il else list_log_note.append(("No matching price","warning"))
             quantity = il['Quantity'] if 'Quantity' in il else list_log_note.append(("No matching quantity","warning"))
-            
+            discount=il['Discount'] if 'Discount' in il else 0
             vals = {
                 'product':self._get_product(il),
                 'name': description,
                 'price_unit': unit_price,
                 'quantity': quantity,
-                'tax_ids': tax_ids
+                'tax_ids': tax_ids,
+                'discount':discount
             }
 
             invoice_lines_to_create.append(vals)
@@ -454,7 +456,6 @@ class AccountMove(models.Model):
         self.ensure_one()
         data_text=self.convert_PDF_to_Text(data_attachment)
         data_convert=self.chatGPT_convert_Text_to_JSON(data_text)
-        print(data_convert)
         if data_convert==False:
             return False
         self.mapping_invoice_from_data(data_convert,'PDF',force_write=force_write)
@@ -587,7 +588,8 @@ class AccountMove(models.Model):
                         'product_id': ocr_line_vals['product'],
                         'price_unit': ocr_line_vals['price_unit'],
                         'quantity': ocr_line_vals['quantity'],
-                        'tax_ids':[]
+                        'tax_ids':[],
+                        'discount':ocr_line_vals['discount'],
                     })
                     if ocr_line_vals['tax_ids']!=False:
                         line.tax_ids=False
