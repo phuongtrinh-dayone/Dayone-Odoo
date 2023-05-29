@@ -326,12 +326,12 @@ class AccountMove(models.Model):
             if type=="purchase":
                 tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'][:-1])),('type_tax_use','=','purchase')],limit=1)
                 if not tax_id:
-                    list_log_note.append(("No matching taxes "+ data['VAT'],"warning"))
+                    list_log_note.append(("No matching taxes "+ str(data['VAT']),"warning"))
                 return tax_id.id
             elif type=="sale":
                 tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'][:-1])),('type_tax_use','=','sale')],limit=1)
                 if not tax_id:
-                    list_log_note.append(("No matching taxes "+ data['VAT'],"warning"))
+                    list_log_note.append(("No matching taxes "+ str(data['VAT']),"warning"))
                 return tax_id.id
         else:
             return False
@@ -341,13 +341,13 @@ class AccountMove(models.Model):
         if type=="purchase":
             tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'])),('type_tax_use','=','purchase')],limit=1)
             if not tax_id and int(data['VAT'])!=0 :
-                list_log_note.append(("No matching taxes "+ data['VAT'],"warning"))
+                list_log_note.append(("No matching taxes "+ str(data['VAT']),"warning"))
             return tax_id.id
         elif type=="sale":
             tax_id = self.env['account.tax'].search([('amount','=',int(data['VAT'])),('type_tax_use','=','sale')],limit=1)
             # Neu co thue va thue do khac 0
             if not tax_id and int(data['VAT'])!=0 :
-                list_log_note.append(("No matching taxes "+ data['VAT'],"warning"))
+                list_log_note.append(("No matching taxes "+ str(data['VAT']),"warning"))
             return tax_id.id
         else:
             return False
