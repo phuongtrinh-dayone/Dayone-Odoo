@@ -17,7 +17,7 @@ class AccountMove(models.Model):
         if attachments.exists():
             data_attachments=[x.datas.decode('utf-8') for x in attachments]
             # Neu co nhieu file hoac ko co file
-            if len(data_attachments)>1 or len(data_attachments)<1:
+            if len(data_attachments)<1:
                 return False
             else:
                 data_attachment=data_attachments[0]
