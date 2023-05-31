@@ -89,28 +89,28 @@ class AccountJournal(models.Model):
         list_attachment=[]
         attachment_name=os.path.splitext(attachment.name)[0]
         print(attachment_name)
-        serial,invoice_No,seller_tax_code=self.get_data_xml(attachment)
-
-        for attachment1 in not_xml_attachments:
-            attachment1_name=os.path.splitext(attachment1.name)[0]
-            # Nếu trùng tên
-            if attachment_name==attachment1_name:
-                is_have_pdf=True
-                list_attachment.append(attachment1)
-                break
-            pdf_data=self.get_data_pdf(attachment1)
-            if seller_tax_code!="":
-                # Trùng serial , số  hóa đơn và mã số thuế người bán
-                if seller_tax_code in pdf_data and serial in pdf_data and invoice_No in pdf_data:
+        serial,invoice_No,seller_tax_code,buyer_name=self.get_data_xml(attachment)
+        if serial!=False and seller_tax_code!=False and invoice_No!=False:
+            for attachment1 in not_xml_attachments:
+                attachment1_name=os.path.splitext(attachment1.name)[0]
+                # Nếu trùng tên
+                if attachment_name==attachment1_name:
                     is_have_pdf=True
                     list_attachment.append(attachment1)
                     break
-            else:
-                if serial in pdf_data and invoice_No in pdf_data:
-                    is_have_pdf=True
-                    list_attachment.append(attachment1)
-                    break
-            index=index+1
+                pdf_data=self.get_data_pdf(attachment1)
+                if seller_tax_code!="":
+                    # Trùng serial , số  hóa đơn và mã số thuế người bán
+                    if seller_tax_code in pdf_data and serial in pdf_data and invoice_No in pdf_data and buyer_name in pdf_data:
+                        is_have_pdf=True
+                        list_attachment.append(attachment1)
+                        break
+                else:
+                    if serial in pdf_data and invoice_No in pdf_data and buyer_name in pdf_data:
+                        is_have_pdf=True
+                        list_attachment.append(attachment1)
+                        break
+                index=index+1
 
         list_attachment.append(attachment)
         invoice = self.env['account.move'].create({})
@@ -123,18 +123,21 @@ class AccountJournal(models.Model):
         return invoice,"False"
         
     def get_data_xml(self,attachment):
-        data_attachment=attachment.datas.decode('utf-8')
-        decoded_data = base64.b64decode(data_attachment)
-        root = ET.fromstring(decoded_data)
+        try :
+            data_attachment=attachment.datas.decode('utf-8')
+            decoded_data = base64.b64decode(data_attachment)
+            root = ET.fromstring(decoded_data)
 
-        Invoice_Data=root.find(".//DLHDon")
-        serial1=Invoice_Data.find("TTChung/KHMSHDon").text if Invoice_Data.find("TTChung/KHMSHDon")!=None else""
-        serial2=Invoice_Data.find("TTChung/KHHDon").text if Invoice_Data.find("TTChung/KHHDon")!=None else""
-        serial=serial1+serial2
-        invoice_No=Invoice_Data.find("TTChung/SHDon").text if Invoice_Data.find("TTChung/SHDon")!=None else "",
-        seller_tax_code=Invoice_Data.find("NDHDon/NBan/MST").text if Invoice_Data.find("NDHDon/NBan/MST")!=None else "",    
-        return serial,invoice_No[0],seller_tax_code[0]
-
+            Invoice_Data=root.find(".//DLHDon")
+            serial1=Invoice_Data.find("TTChung/KHMSHDon").text if Invoice_Data.find("TTChung/KHMSHDon")!=None else""
+            serial2=Invoice_Data.find("TTChung/KHHDon").text if Invoice_Data.find("TTChung/KHHDon")!=None else""
+            serial=serial1+serial2
+            invoice_No=Invoice_Data.find("TTChung/SHDon").text if Invoice_Data.find("TTChung/SHDon")!=None else "",
+            seller_tax_code=Invoice_Data.find("NDHDon/NBan/MST").text if Invoice_Data.find("NDHDon/NBan/MST")!=None else "",
+            buyer_name=Invoice_Data.find("NDHDon/NMua/Ten").text if Invoice_Data.find("NDHDon/NMua/Ten")!=None else ""   
+            return serial,invoice_No[0],seller_tax_code[0],buyer_name[0]
+        except:
+            return False,False,""
     def get_data_pdf(self,attachment):
         try:
             data_attachment=attachment.datas.decode('utf-8')

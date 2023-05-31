@@ -343,63 +343,63 @@ class AccountMove(models.Model):
             if partner_id:
                 self.partner_id = partner_id
             
-            context_create_date = fields.Date.context_today(self, self.create_date)
-            # Ngày hóa đơn
-            if date_invoice=="":
-                list_log_note.append(("No matching date invoice","warning"))
-            if date_invoice!="" and (not self.invoice_date or self.invoice_date == context_create_date or force_write):
-                self.invoice_date = date_invoice
-            # Ngày đáo hạn
-            if due_date!="" and (not self.invoice_date_due or self.invoice_date_due == context_create_date or force_write):
-                self.invoice_date_due = due_date
-            # Chính sách đáo hạn
-            if term!="" and (not self.invoice_payment_term_id or force_write):
-                self.invoice_payment_term_id=self._get_term(term)
-            # Điều khoản và chính sách
-            if term_and_condition!="" and (not self.narration or force_write):
-                self.narration=term_and_condition
-            # Mã hoá đơn
-            if (not self.ref or force_write):
-                if serial=="":
-                    self.ref=invoice_id
-                else:
-                    ref=serial+"/"+invoice_id
-                    self.ref = ref
-                    if ref=="/":
-                        list_log_note.append(("No matching bill reference","notice"))
-            # Đơn vị tiền tệ
-            if currency and (self.currency_id == self.company_currency_id or force_write):
-                    currency = self._get_currency(currency, self.partner_id)
-                    if currency:
-                        self.currency_id = currency
-            # Các dòng trong hóa đơn
-            # Xóa các record cũ trước khi cập nhập
-            if force_write:
-                self.invoice_line_ids = [Command.clear()]
-            self.invoice_line_ids.unlink()
-            # Tạo mới các dòng 
-            vals_invoice_lines = self._get_invoice_lines(results)
-            self.invoice_line_ids = [
-                Command.create({'name': line_vals.pop('name')})
-                for line_vals in vals_invoice_lines
-            ]
-            for line, ocr_line_vals in zip(self.invoice_line_ids[-len(vals_invoice_lines):], vals_invoice_lines):
+        context_create_date = fields.Date.context_today(self, self.create_date)
+        # Ngày hóa đơn
+        if date_invoice=="":
+            list_log_note.append(("No matching date invoice","warning"))
+        if date_invoice!="" and (not self.invoice_date or self.invoice_date == context_create_date or force_write):
+            self.invoice_date = date_invoice
+        # Ngày đáo hạn
+        if due_date!="" and (not self.invoice_date_due or self.invoice_date_due == context_create_date or force_write):
+            self.invoice_date_due = due_date
+        # Chính sách đáo hạn
+        if term!="" and (not self.invoice_payment_term_id or force_write):
+            self.invoice_payment_term_id=self._get_term(term)
+        # Điều khoản và chính sách
+        if term_and_condition!="" and (not self.narration or force_write):
+            self.narration=term_and_condition
+        # Mã hoá đơn
+        if (not self.ref or force_write):
+            if serial=="":
+                self.ref=invoice_id
+            else:
+                ref=serial+"/"+invoice_id
+                self.ref = ref
+                if ref=="/":
+                    list_log_note.append(("No matching bill reference","notice"))
+        # Đơn vị tiền tệ
+        if currency and (self.currency_id == self.company_currency_id or force_write):
+                currency = self._get_currency(currency, self.partner_id)
+                if currency:
+                    self.currency_id = currency
+        # Các dòng trong hóa đơn
+        # Xóa các record cũ trước khi cập nhập
+        if force_write:
+            self.invoice_line_ids = [Command.clear()]
+        self.invoice_line_ids.unlink()
+        # Tạo mới các dòng 
+        vals_invoice_lines = self._get_invoice_lines(results)
+        self.invoice_line_ids = [
+            Command.create({'name': line_vals.pop('name')})
+            for line_vals in vals_invoice_lines
+        ]
+        for line, ocr_line_vals in zip(self.invoice_line_ids[-len(vals_invoice_lines):], vals_invoice_lines):
+                line.tax_ids=False
+                line.write({
+                    'product_id': ocr_line_vals['product'],
+                    'price_unit': ocr_line_vals['price_unit'],
+                    'quantity': ocr_line_vals['quantity'],
+                    'tax_ids':[],
+                    'discount':ocr_line_vals['discount'],
+                })
+                if ocr_line_vals['tax_ids']!=False:
                     line.tax_ids=False
                     line.write({
-                        'product_id': ocr_line_vals['product'],
-                        'price_unit': ocr_line_vals['price_unit'],
-                        'quantity': ocr_line_vals['quantity'],
-                        'tax_ids':[],
-                        'discount':ocr_line_vals['discount'],
-                    })
-                    if ocr_line_vals['tax_ids']!=False:
-                        line.tax_ids=False
-                        line.write({
-                        'tax_ids':[(4, ocr_line_vals['tax_ids'])]
-                    })
-            # Log NOITICE nếu giá trị của hóa đơn khác với giá trị được odoo tính toán
-            if self.amount_total!=float(amount_total):
-                list_log_note.append(("The total amount in the invoice differs from the calculation in Odoo","warning"))
+                    'tax_ids':[(4, ocr_line_vals['tax_ids'])]
+                })
+        # Log NOITICE nếu giá trị của hóa đơn khác với giá trị được odoo tính toán
+        if self.amount_total!=float(amount_total):
+            list_log_note.append(("The total amount in the invoice differs from the calculation in Odoo","warning"))
 
     # Sự kiện Diligital
     def update_data_invoice_vn(self):
@@ -453,4 +453,6 @@ class AccountMove(models.Model):
                                 subtype_xmlid='mail.mt_note',
                                 author_id=odoobot.id)
         list_log_note.clear()
-        
+    
+    def check_invoice(self):
+        pass
