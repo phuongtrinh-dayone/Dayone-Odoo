@@ -90,7 +90,7 @@ class AccountJournal(models.Model):
         attachment_name=os.path.splitext(attachment.name)[0]
         print(attachment_name)
         serial,invoice_No,seller_tax_code,buyer_name=self.get_data_xml(attachment)
-        if serial!=False and seller_tax_code!=False and invoice_No!=False:
+        if serial!=False and seller_tax_code!=False and invoice_No!=False and buyer_name!=False:
             for attachment1 in not_xml_attachments:
                 attachment1_name=os.path.splitext(attachment1.name)[0]
                 # Nếu trùng tên
@@ -137,7 +137,7 @@ class AccountJournal(models.Model):
             buyer_name=Invoice_Data.find("NDHDon/NMua/Ten").text if Invoice_Data.find("NDHDon/NMua/Ten")!=None else ""   
             return serial,invoice_No[0],seller_tax_code[0],buyer_name[0]
         except:
-            return False,False,""
+            return False,False,False,False
     def get_data_pdf(self,attachment):
         try:
             data_attachment=attachment.datas.decode('utf-8')

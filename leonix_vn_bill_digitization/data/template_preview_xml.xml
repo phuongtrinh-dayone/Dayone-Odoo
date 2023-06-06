@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <template id="xml_preview_template_id">
+    <link rel="stylesheet" href="leonix_vn_bill_digitization/static/src/css/template_css.css" type="text/css" />  
+    <div class="main-page">
+        <div class="heading-content">
+            <div class="top-content">
+                <div style="width: 80px; min-height: 20px">
+                </div>
+                <div class="code-content"><b style=" font-weight: bold;color: black;">Mẫu số: <t t-esc="template_No"/>
+                        </b><br/><b style=" font-weight: bold;color: black;">Ký hiệu: <t t-esc="serial"/>
+                        </b><br/><b style=" font-weight: bold;color: black;">Số: <t t-esc="invoice_No"/>
+                        </b></div>
+            </div>
+            <div class="title-heading">
+                <h2 class="main-title"> <t t-esc="invoice_Name"/> </h2>
+                <p class="day"></p>
+                <div class="day">
+                    <p class="day">Ngày <t t-esc="date_create.get('day')"/> tháng <t t-esc="date_create.get('month')"/> năm <t t-esc="date_create.get('year')"/></p>
+                </div>
+                <p></p>
+            </div>
+        </div>
+        <div class="vip-divide"></div>
+        <div class="content-info">
+            <ul class="list-fill-out">
+                <li>
+                    <div class="data-item">
+                        <div class="di-label"><span>Tên người bán:</span></div>
+                        <div class="di-value"><b style=" font-weight: bold;color: black;"><t t-esc="seller_name"/></b></div>
+                    </div>
+                </li>
+                <li>
+                    <div class="data-item">
+                        <div class="di-label"><span>Mã số thuế:</span></div>
+                        <div class="di-value"><b style=" font-weight: bold;color: black;"><t t-esc="seller_tax_code"/></b></div>
+                    </div>
+                </li>
+                <li>
+                    <div class="data-item">
+                        <div class="di-label"><span>Địa chỉ:</span></div>
+                        <div class="di-value">
+                            <div><t t-esc="seller_address"/></div>
+                        </div>
+                    </div>
+                </li>
+                <li>
+                    <div class="data-item">
+                        <div class="di-label"><span>Điện thoại:</span></div>
+                        <div class="di-value">
+                            <div><t t-esc="seller_phone"/></div>
+                        </div>
+                    </div>
+                </li>
+                <li>
+                    <div class="vip-divide" style="margin: 5px 0;"></div>
+                </li>
+                <li>
+                    <div class="data-item">
+                        <div class="di-label"><span>Tên người mua:</span></div>
+                        <div class="di-value"><b style=" font-weight: bold;color: black;"><t t-esc="buyer_name"/></b></div>
+                    </div>
+                </li>
+                <li>
+                    <div class="data-item">
+                        <div class="di-label"><span>Mã số thuế:</span></div>
+                        <div class="di-value"><b style=" font-weight: bold;color: black;"><t t-esc="buyer_tax_code"/></b></div>
+                    </div>
+                </li>
+                <li>
+                    <div class="data-item">
+                        <div class="di-label"><span>Địa chỉ:</span></div>
+                        <div class="di-value">
+                            <div><t t-esc="buyer_address"/></div>
+                        </div>
+                    </div>
+                </li>
+                <li class="flex-li">
+                    <div class="data-item" style="width: 50%">
+                        <div class="di-label"><span>Hình thức thanh toán:</span></div>
+                        <div class="di-value">
+                            <div><t t-esc="payment_method"/></div>
+                        </div>
+                    </div>
+                    <div class="data-item" style="width: 50%">
+                        <div class="di-label"><span>Đơn vị tiền tệ:</span></div>
+                        <div class="di-value">
+                            <div><t t-esc="currency"/></div>
+                        </div>
+                    </div>
+                </li>
+            </ul>
+            <table class="res-tb">
+                <thead style="text-align: center;">
+                    <tr>
+                        <th class="tb-stt">STT</th>
+                        <th class="tb-thh">Tên hàng hóa, dịch vụ</th>
+                        <th class="tb-dvt">Đơn vị tính</th>
+                        <th class="tb-sl">Số lượng</th>
+                        <th class="tb-dg">Đơn giá</th>
+                        <th class="tb-dg">Chiết khấu</th>
+                        <th class="tb-ts">Thuế suất</th>
+                        <th class="tb-ttct">Thành tiền chưa có thuế GTGT</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+                <tbody>
+                <t t-foreach="invoice_line" t-as="invoice">
+                    <tr>
+                        <td class="tx-center"><t t-esc="invoice.get('No')"/></td>
+                        <td class="tx-left"><t t-esc="invoice.get('Name')"/></td>
+                        <td class="tx-left"><t t-esc="invoice.get('Unit')"/></td>
+                        <td class="tx-center"><t t-esc="invoice.get('Quantity')"/></td>
+                        <td class="tx-center"><t t-esc="invoice.get('Price')"/></td>
+                        <td class="tx-center"><t t-esc="invoice.get('Discount_total')"/></td>
+                        <td class="tx-center"><t t-esc="invoice.get('VAT')"/></td>
+                        <td class="tx-center"><t t-esc="invoice.get('Total_price')"/></td>
+                    </tr>
+                  </t>  
+                </tbody>
+            </table>
+            <div class="table-horizontal-wrapper">
+                <div style="margin-right: 10;">
+                    <table class="res-tb">
+                        <thead style="text-align: center">
+                            <tr>
+                                <th style=" font-weight: bold;color: black;">Thuế<br/>suất</th>
+                                <th style=" font-weight: bold;color: black;">Tổng tiền<br/>chưa thuế</th>
+                                <th style=" font-weight: bold;color: black;">Tổng tiền thuế</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="tx-center"><t t-esc="vat"/></td>
+                                <td class="tx-center"><t t-esc="total"/></td>
+                                <td class="tx-center"><t t-esc="total_VAT"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="flex: 1;padding-left: 7px;">
+                    <table class="res-tb">
+                        <tbody>
+                            <tr>
+                                <td class="tx-center">Tổng tiền chưa thuế<br/> (Tổng thành tiền chưa có thuế)</td>
+                                <td class="tx-center" style="min-width: 150px; max-width: 300px;"><t t-esc="total"/></td>
+                            </tr>
+                            <tr>
+                                <td class="tx-center">Tổng tiền thuế </td>
+                                <td class="tx-center" style="min-width: 150px; max-width: 300px"><t t-esc="total_VAT"/></td>
+                            </tr>
+                            <!-- <tr>
+                                <td class="tx-center">Tổng tiền phí</td>
+                                <td class="tx-center" style="min-width: 150px; max-width: 300px">0</td>
+                            </tr>
+                            <tr>
+                                <td class="tx-center">Tổng tiền chiết khấu thương mại</td>
+                                <td class="tx-center" style="min-width: 150px; max-width: 300px">0</td>
+                            </tr> -->
+                            <tr>
+                                <td class="tx-center">Tổng tiền thanh toán bằng số</td>
+                                <td class="tx-center" style="min-width: 150px; max-width: 300px"><t t-esc="total_after_VAT"/></td>
+                            </tr>
+                            <tr>
+                                <td class="tx-center">Tổng tiền thanh toán bằng chữ</td>
+                                <td class="tx-center" style="min-width: 150px; max-width: 300px"><t t-esc="total_after_VAT_text"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="vip-divide"></div>
+        <div class="ft-sign">
+            <div class="sign-dx">
+                <div style="margin-top: 0">
+                    <p style="margin: 6px 0;">NGƯỜI MUA HÀNG</p>
+                    <p style="margin-top: 0"><i style="font-size: 14px;">(Chữ ký số (nếu có))</i></p>
+                </div>
+                <div style="margin-top: 0">
+                    <p style="margin: 6px 0;">NGƯỜI BÁN HÀNG</p>
+                    <p style="margin-top: 0"><i style="font-size: 14px;">(Chữ ký điện tử, chữ ký số)</i></p>
+                    <!-- <div class="sign-box"><span>Signature Valid</span><span>Ký bởi: CÔNG TY XĂNG DẦU NAM TÂY
+                            NGUYÊN</span><span>Ký ngày: 2023-01-28T17:53:56</span></div> -->
+                </div>
+            </div>
+            <div class="fd-end">
+                <p><i>(Cần kiểm tra, đối chiếu khi lập, nhận hóa đơn)</i></p>
+            </div>
+        </div>
+    </div>
+    </template>
+</odoo>

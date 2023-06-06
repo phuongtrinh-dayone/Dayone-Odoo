@@ -1,0 +1,2 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+leonix_vn_bill_digitization.access_account_preview_xml_wizard_model,account_preview_xml_wizard_model,leonix_vn_bill_digitization.model_account_preview_xml_wizard,base.group_user,1,1,1,1

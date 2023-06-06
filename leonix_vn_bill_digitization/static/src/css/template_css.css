@@ -1,0 +1,203 @@
+
+/* b, strong {
+    font-weight: bold;color: black;
+}
+th {
+    color: black;
+    font-weight: bold;
+} */
+.main-page {
+    font-size: 13pt;
+    box-sizing: border-box;
+    max-width: 210mm;
+    margin: auto;
+    background-image: url(https://tracuuhoadon.vn/invoice/viewinvoice-bg.jpg);
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: 180%;
+    box-shadow: rgb(222 226 230 / 70%) 0px 0px 9px 2px;
+    font-family: "Times New Roman";
+    padding: 20px;
+    line-height: 1.5;
+    position: relative;
+    z-index: 1;
+    border: 3px double rgba(145, 87, 21, 0.69);
+}
+.heading-content .top-content {
+    display: flex;
+    justify-content: space-between;
+}
+.heading-content .code-content {
+    display: inline-block;
+}
+.heading-content .main-title {
+    font-size: 20pt;
+    text-align: center;
+    display: block;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+.heading-content p.day {
+    text-align: center;
+    color: black;
+    display: block;
+}
+.vip-divide {
+    width: 100%;
+    height: 0;
+    border-bottom: 1px solid rgba(145, 87, 21, 0.69);
+}
+.data-item {
+    width: 100%;
+    display: flex;
+    justify-content: left;
+    align-items: flex-start;
+    font-size: 13pt;
+    color: #000;
+    margin-bottom: 10px;
+}
+.data-item .di-label {
+    min-height: 25px;
+    border-bottom: 1px dashed transparent;
+    display: flex;
+    align-items: flex-start;
+}
+.data-item .di-value {
+    min-height: 25px;
+    box-sizing: border-box;
+    flex: 1;
+    border-bottom: 1px dashed #e8e8e8;
+    display: flex;
+    align-items: flex-start;
+    padding-left: 10px;
+    justify-content: flex-start;
+}
+.content-info {
+    padding-top: 5px;
+}
+.content-info .list-fill-out {
+    list-style: none;
+    padding-inline-start: 0;
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+.content-info .list-fill-out li {
+    font-size: 13pt;
+}
+.flex-li {
+    display: flex;
+}
+.res-tb {
+    
+    border-collapse: collapse;
+    border-spacing: 0;
+    width: 100%;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+.res-tb thead tr th.tb-stt {
+    color: black;
+    width: 70px;
+    text-align: center;
+}
+.res-tb thead tr th.tb-thh {
+    color: black;
+    width: 200px;
+    text-align: center;
+}
+.res-tb thead tr th.tb-dvt {
+    color: black;
+    width: 100px;
+    text-align: center;
+}
+.res-tb thead tr th.tb-sl {
+    color: black;
+    width: 80px;
+    text-align: center;
+}
+.res-tb thead tr th.tb-dg {
+    color: black;
+    width: 80px;
+    text-align: center;
+}
+
+.res-tb thead tr th {
+    font-size: 16px;
+    border: 1px solid black;
+    vertical-align: middle;
+    /* white-space: nowrap; */
+    padding: 6px 4px 6px 4px;
+}
+.res-tb thead tr th.tb-ts {
+    color: black;
+    font-size: 16px;
+    width: 80px;
+    text-align: center;
+}
+.res-tb thead tr th.tb-ttct {
+    color: black;
+    width: 250px;
+    text-align: center;
+}
+.res-tb tr td.tx-center {
+    color: black;
+    text-align: left;
+    text-align: center;
+}
+.res-tb tr td {
+    font-size: 16px;
+    border: 1px solid black;
+    padding: 6px 4px 6px 4px;
+    vertical-align: baseline;
+}
+.res-tb tr td.tx-left {
+    color: black;
+    text-align: left;
+    text-align: left;
+}
+.table-horizontal-wrapper {
+    display: flex;
+    justify-content: space-between;
+}
+.res-tb {
+    border-collapse: collapse;
+    border-spacing: 0;
+    width: 100%;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+.ft-sign .sign-dx {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    align-items: flex-start;
+}
+.ft-sign .sign-dx div p {
+    color: black;
+    text-align: center;
+    font-size: 13pt;
+    font-weight: 100;
+}
+/* .ft-sign .sign-dx h3 p:nth-child(2) {
+    font-size: 14px;
+    font-weight: normal;
+} */
+.sign-box {
+    width: 345px !important;
+    padding: 5px !important;
+    border: 2px solid #23b709 !important;
+    margin-top: 10px !important;
+    font-weight: 500;
+    position: relative;
+}
+.sign-box span {
+    color: #23b709 !important;
+    font-size: 13pt !important;
+    text-align: left !important;
+    display: block;
+}
+.ft-sign .fd-end {
+    color: black;
+    padding-top: 120px;
+    text-align: center;
+}
