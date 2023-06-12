@@ -7,6 +7,9 @@
         <div class="heading-content">
             <div class="top-content">
                 <div style="width: 80px; min-height: 20px">
+                    <t t-if="qr_image!=False">
+                        <img alt="DLQRCode" t-attf-src="{{qr_image}}" style="width:80px"/>
+                    </t>
                 </div>
                 <div class="code-content"><b style=" font-weight: bold;color: black;">Mẫu số: <t t-esc="template_No"/>
                         </b><br/><b style=" font-weight: bold;color: black;">Ký hiệu: <t t-esc="serial"/>
@@ -17,7 +20,10 @@
                 <h2 class="main-title"> <t t-esc="invoice_Name"/> </h2>
                 <p class="day"></p>
                 <div class="day">
-                    <p class="day">Ngày <t t-esc="date_create.get('day')"/> tháng <t t-esc="date_create.get('month')"/> năm <t t-esc="date_create.get('year')"/></p>
+                    <p class="day" style="margin-top: 25px;margin-bottom: 0px;">Ngày <t t-esc="date_create.get('day')"/> tháng <t t-esc="date_create.get('month')"/> năm <t t-esc="date_create.get('year')"/></p>
+                    <t t-if="mccqt!=' '">
+                        <p class="day">MCCQT: <t t-esc="mccqt"/></p>
+                    </t>
                 </div>
                 <p></p>
             </div>
@@ -150,14 +156,14 @@
                                 <td class="tx-center">Tổng tiền thuế </td>
                                 <td class="tx-center" style="min-width: 150px; max-width: 300px"><t t-esc="total_VAT"/></td>
                             </tr>
-                            <!-- <tr>
+                            <tr>
                                 <td class="tx-center">Tổng tiền phí</td>
                                 <td class="tx-center" style="min-width: 150px; max-width: 300px">0</td>
                             </tr>
                             <tr>
                                 <td class="tx-center">Tổng tiền chiết khấu thương mại</td>
                                 <td class="tx-center" style="min-width: 150px; max-width: 300px">0</td>
-                            </tr> -->
+                            </tr>
                             <tr>
                                 <td class="tx-center">Tổng tiền thanh toán bằng số</td>
                                 <td class="tx-center" style="min-width: 150px; max-width: 300px"><t t-esc="total_after_VAT"/></td>
@@ -174,15 +180,59 @@
         <div class="vip-divide"></div>
         <div class="ft-sign">
             <div class="sign-dx">
-                <div style="margin-top: 0">
-                    <p style="margin: 6px 0;">NGƯỜI MUA HÀNG</p>
-                    <p style="margin-top: 0"><i style="font-size: 14px;">(Chữ ký số (nếu có))</i></p>
+                 <div style="margin-top: 0">
+                    <p style="margin: 6px 0;">CƠ QUAN THUẾ</p>
+                    <p style="margin-top: 0"><i style="font-size: 14px;">(Chữ ký điện tử, chữ ký số)</i></p>
+                    <t t-if="sign_cqt.get('valid')!=''">
+                        <t t-if="sign_cqt.get('valid')==True">
+                            <div class="sign-area">
+                            <span>Signature Valid</span>
+                            <span>Ký bởi: <t t-esc="sign_cqt.get('name')"/></span>
+                            <span>Ký ngày: <t t-esc="sign_cqt.get('date')"/></span>
+                        </div>
+                        </t>
+                        <t t-else="">
+                            <img src="/leonix_vn_bill_digitization/static/src/img/x-symbol.svg" style="border: 2px solid red; height: 85px; width: 280px;"/>
+                        </t>
+                    </t>
+                    
                 </div>
+                <div style="
+                    width: 10px;
+                "></div>
                 <div style="margin-top: 0">
                     <p style="margin: 6px 0;">NGƯỜI BÁN HÀNG</p>
                     <p style="margin-top: 0"><i style="font-size: 14px;">(Chữ ký điện tử, chữ ký số)</i></p>
-                    <!-- <div class="sign-box"><span>Signature Valid</span><span>Ký bởi: CÔNG TY XĂNG DẦU NAM TÂY
-                            NGUYÊN</span><span>Ký ngày: 2023-01-28T17:53:56</span></div> -->
+                    <t t-if="sign_sell.get('valid')!=''">
+                        <t t-if="sign_sell.get('valid')==True">
+                            <div class="sign-area">
+                            <span>Signature Valid</span>
+                            <span>Ký bởi: <t t-esc="sign_sell.get('name')"/></span>
+                            <span>Ký ngày: <t t-esc="sign_sell.get('date')"/></span>
+                        </div>
+                        </t>
+                        <t t-else="">
+                            <img src="/leonix_vn_bill_digitization/static/src/img/x-symbol.svg" style="border: 2px solid red; height: 85px; width: 280px;"/>
+                        </t>
+                    </t>
+                </div>
+            </div>
+            <div class="sign-dx" style="margin-top: 15px;">
+               <div style="margin-top: 0">
+                    <p style="margin: 6px 0;">NGƯỜI MUA HÀNG</p>
+                    <p style="margin-top: 0"><i style="font-size: 14px;">(Chữ ký số (nếu có))</i></p>
+                    <t t-if="sign_buy.get('valid')!=''">
+                        <t t-if="sign_buy.get('valid')==True">
+                            <div class="sign-area">
+                            <span>Signature Valid</span>
+                            <span>Ký bởi: <t t-esc="sign_buy.get('name')"/></span>
+                            <span>Ký ngày: <t t-esc="sign_buy.get('date')"/></span>
+                        </div>
+                        </t>
+                        <t t-else="">
+                            <img src="/leonix_vn_bill_digitization/static/src/img/x-symbol.svg" style="border: 2px solid red; height: 85px; width: 280px;"/>
+                        </t>
+                    </t>
                 </div>
             </div>
             <div class="fd-end">

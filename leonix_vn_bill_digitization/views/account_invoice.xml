@@ -7,26 +7,7 @@
             <field name="arch" type="xml">
                 <data>
                     <xpath expr="//header//button[@name='button_draft']" position="before">
-                        <button name="update_data_invoice_vn" type="object" string="DIGITIZE XML" attrs="{'invisible':[('state','!=','draft')]}" />
-                    </xpath>
-                </data>
-            </field>
-    </record>
-    <record id="view_move_form_vn_inherit_ocr_inherit" model="ir.ui.view">
-            <field name="name">invoice.move.form.inherit.ocr.inherit</field>
-            <field name="model">account.move</field>
-            <field name="inherit_id" ref="account_invoice_extract.view_move_form_inherit_ocr"/>
-            <field name="arch" type="xml">
-                <data>
-                    <xpath expr="//div[@name='waiting_extraction']" position="replace">
-                        <div role="status" class="alert alert-info mb8 text-center" name="waiting_extraction"
-                     attrs="{'invisible':[(1,'=',1)]}">
-                    All fields will be automated by Artificial Intelligence, it might take 5 seconds.
-                    <button type="object" name="check_status" class="btn btn-link">
-                        <i class="fa fa-fw o_button_icon fa-arrow-right"/>
-                        Refresh
-                    </button>
-                </div>
+                        <button name="update_data_invoice_vn" class="btn-primary" type="object" string="DIGITIZE XML" attrs="{'invisible':[('state','!=','draft')]}" />
                     </xpath>
                 </data>
             </field>

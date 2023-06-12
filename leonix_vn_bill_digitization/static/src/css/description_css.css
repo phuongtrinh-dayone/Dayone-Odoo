@@ -1,0 +1,280 @@
+.header-main-title {
+    margin-top: 15pt;
+    text-align: center;
+    font-weight: 1000;
+    color: #F5783B;
+    font-size: 29pt;
+}
+
+.header-sub-title {
+    font-size: 27pt;
+    font-weight: bold;
+    line-height: 1.3;
+    margin-top: 27px;
+    color: black;
+}
+
+.image-1 {
+    width: 87%;
+    height: auto;
+    margin-bottom: 15pt;
+}
+
+.text-content {
+    font-size: 22pt;
+    text-align: justify !important;
+    color: black;
+}
+
+.text-content p b {
+    font-weight: 700;
+}
+
+.text-tilte-content {
+    margin-top: 30pt;
+    text-align: center;
+    font-weight: 600;
+    color: #F5783B;
+    font-size: 28pt;
+}
+
+.text-sub-title-content {
+    font-size: 28pt;
+    font-weight: bold;
+    line-height: 1.3;
+    margin-top: 10px;
+    color: black;
+    text-align: left;
+}
+
+.support-item-type {
+    background-color: #FEEDAA;
+    border-radius: 30pt;
+}
+
+.support-item-type p {
+    padding-left: 15pt;
+    padding-right: 15pt;
+    padding-top: 10pt;
+    padding-bottom: 10pt;
+    text-align: center;
+    font-size: 21pt;
+    font-weight: bold;
+    color: black;
+}
+
+.text-shadow-color .blue {
+    font-size: 50pt;
+    font-weight: bold;
+    color: #3CACAE;
+    text-shadow: 3px 3px #FEEDAA;
+    line-height: 0.8;
+}
+
+.text-shadow-color .orange {
+    font-size: 50pt;
+    font-weight: bold;
+    color: #F5783B;
+    text-shadow: 3px 3px #FEEDAA;
+    line-height: 0.8;
+}
+
+.shadow-color {
+    margin-top: 70pt;
+    padding-left: 100pt;
+}
+
+.thumb-1 {
+    width: 90%;
+}
+
+.description-thumb-1 p {
+    margin-top: 45px;
+    margin-left: 37pt;
+    font-size: 25pt;
+    color: #3CACAE;
+    font-weight: 700;
+}
+
+.description-thumb-1 ul {
+    list-style: none;
+    margin-top: 45px;
+    padding-left: 0px;
+}
+
+.list-item-error img {
+    width: 35px;
+    margin-bottom: 8px;
+}
+
+.list-item-error span {
+
+    padding-left: 10px;
+    font-size: 20pt;
+    font-weight: bold;
+    color: black;
+}
+
+.thumb-2 {
+    width: 90%;
+    float: right
+}
+
+.description-thumb-2 .green {
+    margin-top: 70px;
+    font-size: 25pt;
+    color: #3CACAE;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+.description-thumb-2 .orange {
+    font-size: 25pt;
+    color: #F5783B;
+    font-weight: 700;
+    line-height: 0.7;
+}
+
+.description-thumb-2 ul {
+    list-style: none;
+    margin-top: 60px;
+    padding-left: 0px;
+}
+
+.feature {
+    margin-left: 40px;
+}
+
+.feature-title-left {
+    float: right;
+    font-weight: bold;
+    font-size: 30px;
+    color: black;
+}
+
+.feature-content-left {
+    float: right;
+    color: black;
+    font-size: 28px;
+    text-align: right;
+    padding-left: 140px;
+}
+
+.feature-title-right {
+    float: left;
+    font-weight: bold;
+    font-size: 30px;
+    color: black;
+}
+
+.feature-content-right {
+    float: left;
+    color: black;
+    font-size: 28px;
+    text-align: left;
+    padding-right: 140px;
+}
+
+.image-7 {
+    width: 100%;
+    height: auto;
+    margin-top: 20pt;
+    margin-bottom: 15pt;
+}
+
+.image-8 {
+    width: 100%;
+    height: auto;
+    margin-top: 20pt;
+    margin-bottom: 15pt;
+}
+
+.image-9 {
+    width: 100%;
+    height: auto;
+    margin-top: 20pt;
+    margin-bottom: 15pt;
+}
+
+.image-10 {
+    width: 100%;
+    height: auto;
+    margin-top: 20pt;
+    margin-bottom: 15pt;
+}
+
+.text-tilte-content-2 {
+    margin-top: 30pt;
+    text-align: center;
+    font-weight: 600;
+    color: #F5783B;
+    font-size: 32pt;
+}
+
+.image-resion {
+    width: 60%;
+}
+
+.resion {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.text-resion {
+
+    font-size: 20pt;
+    text-align: center;
+    font-weight: bold;
+    color: black;
+
+}
+
+.list-faq-content {
+    margin-top: 30pt;
+}
+
+/* .list-faq-content p {
+    margin-top: 30pt;
+} */
+
+.faq-title {
+    background-color: #FEEDAA;
+    border-radius: 50pt;
+    display: flex;
+    align-items: center;
+    min-height: 90pt;
+}
+
+.faq-title img {
+    vertical-align: middle;
+    width: 8%;
+    display: inline-block;
+    margin-left: 20pt;
+    margin-right: 20pt;
+}
+
+.faq-title p {
+    vertical-align: middle;
+    display: inline-block;
+    font-size: 23pt;
+    text-align: left;
+    width: 80%;
+    font-weight: bold;
+    line-height: 1.4;
+    color: black;
+    margin-bottom: 0pt;
+}
+
+.faq-content {
+    font-size: 21pt;
+    line-height: 1.1;
+    text-align: left;
+    color: black;
+    margin-top: 30pt;
+}
+
+.faq-content b {
+    
+    font-weight: bold;
+}

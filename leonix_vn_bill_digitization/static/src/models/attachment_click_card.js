@@ -6,7 +6,7 @@ registerPatch({
     name: 'AttachmentCard',
     recordMethods: {
         
-        onClickUnlink(ev) {
+        onClickAttachment(ev) {
             const model_name = this.attachment.originThread.model
             if (this.attachment.mimetype.indexOf('xml') != -1 && model_name == 'account.move') {
                 var action = {

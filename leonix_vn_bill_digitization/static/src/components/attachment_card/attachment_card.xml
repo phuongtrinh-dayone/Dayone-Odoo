@@ -8,7 +8,7 @@
                         'o-isUploading': attachmentCard.attachment.isUploading,
                         'o-viewable': attachmentCard.attachment.isViewable,
                     }" t-att-title="attachmentCard.attachment.displayName ? attachmentCard.attachment.displayName : undefined" role="menu" t-att-aria-label="attachmentCard.attachment.displayName" t-att-data-id="attachmentCard.attachment.localId" 
-                    t-on-click="attachmentCard.onClickUnlink">
+                    t-on-click="attachmentCard.onClickAttachment">
                     <!-- Image style-->
                     <!-- o_image from mimetype.scss -->
                     <div class="o_AttachmentCard_image o_image flex-shrink-0 m-1" t-on-click="attachmentCard.onClickImage" t-att-class="{'o-attachment-viewable opacity-75-hover': attachmentCard.attachment.isViewable,}" role="menuitem" aria-label="Preview" t-att-tabindex="attachmentCard.attachment.isViewable ? 0 : -1" t-att-aria-disabled="!attachmentCard.attachment.isViewable" t-att-data-mimetype="attachmentCard.attachment.mimetype">

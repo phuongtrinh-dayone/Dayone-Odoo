@@ -11,7 +11,7 @@ th {
     box-sizing: border-box;
     max-width: 210mm;
     margin: auto;
-    background-image: url(https://tracuuhoadon.vn/invoice/viewinvoice-bg.jpg);
+    background-image: url(/leonix_vn_bill_digitization/static/src/img/invoice-bg.jpg);
     background-repeat: no-repeat;
     background-position: center center;
     background-size: 180%;
@@ -200,4 +200,21 @@ th {
     color: black;
     padding-top: 120px;
     text-align: center;
+}
+.sign-area {
+    width: 310px !important;
+    padding: 5px !important;
+    border: 2px solid #23b709 !important;
+    margin-top: 10px !important;
+    font-weight: 500;
+    position: relative;
+}
+.sign-area span {
+    color: #23b709 !important;
+    font-size: 16px !important;
+    text-align: left !important;
+    display: block;
+}
+.check-invoice-log {
+    list-style: none;
 }

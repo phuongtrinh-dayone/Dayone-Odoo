@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id='ir_cron_xml_invoice' model='ir.cron'>
+            <field name='name'>Invoice XML: Parse Invoices</field>
+            <field name='model_id' ref='model_account_move'/>
+            <field name='state'>code</field>
+            <field name='code'>model._cron_digital()</field>
+            <field name='interval_number'>1</field>
+            <field name='interval_type'>days</field>
+            <field name='numbercall'>-1</field>
+            <field name="doall" eval="False"/>
+            <field name='priority' eval="1"/>
+        </record>
+    </data>
+</odoo>

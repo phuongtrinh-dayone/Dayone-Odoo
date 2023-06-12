@@ -1,63 +1,342 @@
+
+
 from psycopg2 import IntegrityError, OperationalError
-from odoo import fields, models, _, tools, Command
-from odoo.exceptions import UserError
-import base64
-import magic
-from fuzzywuzzy import fuzz, process
-import xml.etree.ElementTree as ET
+from odoo.tools.translate import _
 import os
-
-
+import chilkat2
+from cryptography.hazmat.backends import default_backend
+from cryptography import x509
+from datetime import datetime
+import xml.etree.ElementTree as ET
+from fuzzywuzzy import fuzz, process
+import magic
+import base64
+from odoo.tools.misc import formatLang
+from odoo.exceptions import UserError
+from odoo import fields, models, Command
+# region Static
 list_log_note = []
-
+message_auto_digital = []
+message_check_valid = []
+tracking_history_data = []
+# endregion
 
 class AccountMove(models.Model):
     _inherit = ['account.move']
 
-    def cron_xml(self):
-        Attachment = self.env['ir.attachment']
-        attachments = Attachment.search(
-            [('res_model', '=', 'account.move'), ('res_id', '=', self.id)])
-        if attachments.exists():
-            data_attachments = [x.datas.decode('utf-8') for x in attachments]
-            # Neu co nhieu file hoac ko co file
-            if len(data_attachments) < 1:
-                return False
+    digital_state = fields.Selection([('waiting_upload', 'Waiting upload'),
+                                      ('done', 'Completed flow')],
+                                     'Extract state', default='waiting_upload', required=True, copy=False)
+
+    amount_untaxed_1 = fields.Monetary(default=0)
+
+    # region Log Note
+    # Log cảnh báo
+    def log_note(self):
+        logs = list_log_note
+        for log in logs:
+            if log[1] == "notice":
+                note = "⚠️ [NOTICE] "+log[0]
             else:
-                data_attachment = data_attachments[0]
-                binary_data = base64.b64decode(data_attachment)
-                file_format = self.get_file_format(binary_data)
-                file_format = file_format.lower()
-                # neu file co dinh dang PDF bo qua
-                self.update_data_invoice_vn_cron()
-                return True
+                note = "⚠️ [WARNING] "+log[0]
+            odoobot = self.env.ref('base.partner_root')
+            self.message_post(body=_(note),
+                              message_type='comment',
+                              subtype_xmlid='mail.mt_note',
+                              author_id=odoobot.id)
+        list_log_note.clear()
+    # Log CA
 
-    def _cron_parse(self):
-        for rec in self.search([('extract_state', '=', 'waiting_upload'), ('state', '=', 'draft')]):
-            try:
-                with self.env.cr.savepoint(flush=False):
-                    rec.cron_xml()
-                    # We handle the flush manually so that if an error occurs, e.g. a concurrent update error,
-                    # the savepoint will be rollbacked when exiting the context manager
-                    self.env.cr.flush()
-                self.env.cr.commit()
-            except (IntegrityError, OperationalError) as e:
-                pass
+    def log_note_ca_invoice(self, valid):
+        odoobot = self.env.ref('base.partner_root')
+        messages = message_check_valid
+        if valid:
+            data = """
+            <h5>Invoice is valid</h5>
+            <ul class="check-invoice-log">
+                <li>
+                    <i class="fa fa-check-circle text-green" style="color:#0eab00;" aria-hidden="true"></i>
+                    <strong>Invoice content remains intact</strong><br>
+                </li>
+                <li>
+                    <i class="fa fa-check-circle text-green" style="color:#0eab00;" aria-hidden="true"></i>
+                    <strong>Tax identification number of the issue unit matches the tax identification number of the digital signature</strong><br>
+                </li>
+                <li>
+                    <i class="fa fa-check-circle text-green" style="color:#0eab00;" aria-hidden="true"></i>
+                    <strong>Signing time matches the creation time</strong><br>
+                </li>
+                <li>
+                    <i class="fa fa-check-circle text-green" style="color:#0eab00;" aria-hidden="true"></i>
+                    <strong>Digital signature is still valid at the time of sign</strong><br>
+                </li>
+            </ul>
+            """
+        else:
+            data_mess = ""
+            for message in messages:
+                data_mess += """
+                    <li>
+                        <i class="fa fa-times-circle text-green" style="color:#dc3545;" aria-hidden="true"></i>
+                        <strong>"""+message+"""</strong><br>
+                    </li>
+                """
+            # ---------------------------------------------------------
+            data = """
+            <h5>Invoice is invalid</h5>
+            <ul class="check-invoice-log">
+                """+data_mess+"""
+            </ul>
+            """
+        self.message_post(body=data,
+                          message_type='comment',
+                          subtype_xmlid='mail.mt_note',
+                          author_id=odoobot.id)
+        message_check_valid.clear()
+    # Log Tracking
 
-    # Xác định file đầu vào
-    def get_file_format(self, binary_data):
-        # Tạo một đối tượng magic
-        file_magic = magic.Magic(mime=True, mime_encoding=True)
+    def log_note_digital(self):
+        data_digitals = tracking_history_data
+        data_item = ""
+        odoobot = self.env.ref('base.partner_root')
+        for data_digital in data_digitals:
+            data_item = data_item+"""
+            <li>
+                    <div class="o_TrackingValue d-flex align-items-center flex-wrap mb-1" role="group"><span
+                            class="o_TrackingValue_oldValue me-1 px-1 text-muted fw-bold fst-italic">Không </span><i
+                            class="o_TrackingValue_separator fa fa-long-arrow-right mx-1 text-600" title="Đã thay đổi" role="img"
+                            aria-label="Changed"></i><span
+                            class="o_TrackingValue_newValue me-1 fw-bold text-info">"""+data_digital.get('new')+"""</span><span
+                            class="o_TrackingValue_fieldName ms-1 fst-italic text-muted">(Mã phiếu)</span></div>
+                </li>"""
+        data = """
+            <ul class="o_Message_trackingValues mb-0 ps-4">
+                """+data_item+"""
+            </ul>
+            """
+        if len(data_digitals) > 0:
+            self.message_post(body=data,
+                              message_type='comment',
+                              subtype_xmlid='mail.mt_note',
+                              author_id=odoobot.id)
+        tracking_history_data.clear()
+    # Get data tracking
 
-        # Xác định định dạng của dữ liệu binary
-        file_format = file_magic.from_buffer(binary_data)
+    def get_history_data(self, vals):
+        tracking_fields = ['ref', 'payment_reference']
+        tracking_field_many2one = ['partner_id', 'currency_id']
+        field_string = self.env['ir.model.fields'].get_field_string(self._name)
+        for field in tracking_field_many2one:
+            if field in vals:
+                if self[field].id != vals.get(field):
+                    if field == 'partner_id':
+                        data = self.env['res.partner'].browse(vals.get(field))
+                        tracking_history_data.append(
+                            {"old": self[field].name if self[field].name else _("None"), "new": data.name, "string": field_string[field]})
+                    elif field == 'currency_id':
+                        data = self.env['res.currency'].browse(vals.get(field))
+                        tracking_history_data.append(
+                            {"old": self[field].name if self[field].name else _("None"), "new": data.name, "string": field_string[field]})
+        for field in tracking_fields:
+            if field in vals:
+                if self[field] != vals.get(field):
+                    tracking_history_data.append(
+                        {"old": self[field] if self[field] else _("None"), "new": vals.get(field), "string": field_string[field]})
+    # Get data tracking amount
 
-        # Tách lấy phần đuôi của định dạng
-        file_extension = file_format.split(';')[0]
+    # def _compute_amount(self):
+    #     field_string = self.env['ir.model.fields'].get_field_string(self._name)
+    #     currency = self.currency_id
+    #     old = formatLang(self.env, self.amount_untaxed,
+    #                      monetary=True, currency_obj=currency)
+    #     # if self.amount_untaxed == 0 :
+    #     #     self.amount_untaxed_1 = 0
+    #     super(AccountMove, self)._compute_amount()
+    #     new = formatLang(self.env, self.amount_untaxed,
+    #                      monetary=True, currency_obj=currency)
+    #     if old != new and self.amount_untaxed != 0 and self.amount_untaxed_1 != self.amount_untaxed:
+    #         old = formatLang(self.env, self.amount_untaxed_1,
+    #                          monetary=True, currency_obj=currency)
+    #         tracking_history_data.append(
+    #             {"old": old, "new": new, "string": field_string['amount_untaxed']})
+    #         self.amount_untaxed_1 = self.amount_untaxed
+    # # Bắt sự kiện thay đổi
 
-        return file_extension
+    def write(self, vals):
+        self.get_history_data(vals)
+        return super(AccountMove, self).write(vals)
+    # endregion
 
-    # region xử  lý data
+    # region Verify
+    def check_invoice_valid(self, data):
+        try:
+            is_valid = True
+            # Create the XML element tree
+            xml_valid = self.check_xml_valid(data)
+            if not xml_valid:
+                message_check_valid.append("Invoice content is not intact")
+                is_valid = False
+            root = ET.fromstring(data)
+            Invoice_Data = root.find(".//DLHDon")
+            # Người bán (thông tin trong hóa đơn)
+            seller_name = Invoice_Data.find("NDHDon/NBan/Ten").text
+            seller_tax = Invoice_Data.find("NDHDon/NBan/MST").text
+            # Ngày Hóa đơn
+            datetemp = Invoice_Data.find("TTChung/NLap").text
+            date_invoice = datetime.strptime(datetemp, "%Y-%m-%d").date()
+
+            # Người bán
+            signature_Seller = root.find(".//DSCKS/NBan")
+            signature_Seller = signature_Seller.find(
+                ".//{http://www.w3.org/2000/09/xmldsig#}Signature") if signature_Seller != None else signature_Seller
+            if signature_Seller != None:
+                x509_Seller = signature_Seller.find(
+                    ".//{http://www.w3.org/2000/09/xmldsig#}X509Certificate")
+                if x509_Seller != None:
+                    if signature_Seller.find(".//SigningTime") != None:
+                        signing_time = signature_Seller.find(".//SigningTime")
+                    elif signature_Seller.find(
+                            ".//{http://www.w3.org/2000/09/xmldsig#}SigningTime") != None:
+                        signing_time = signature_Seller.find(
+                            ".//{http://www.w3.org/2000/09/xmldsig#}SigningTime")
+                    else:
+                        namespace = {
+                            'ns': 'http://example.org/#signatureProperties'}
+                        signing_time = signature_Seller.find(
+                            './/ns:SigningTime', namespace)
+                    datetemp1 = signing_time.text
+                    datetemp1 = datetemp1.replace(
+                        "Z", "") if "Z" in datetemp1 else datetemp1
+                    date_sign = datetime.strptime(
+                        datetemp1, "%Y-%m-%dT%H:%M:%S").date()
+                    cert_Seller = x509_Seller.text
+                    data_signature_Seller = self.check_X509Certificate(
+                        cert_Seller)
+                    if data_signature_Seller:
+                        signature_tax = data_signature_Seller.get("tax_id")
+                        # kiểm tra chữ ký hợp lệ
+                        if signature_tax != seller_tax:
+                            message_check_valid.append(
+                                "Tax identification number of the issue unit does not match the tax identification number of the digital signature")
+                            is_valid = False
+                        if data_signature_Seller.get("valid_from").date() > date_sign or data_signature_Seller.get("valid_to").date() < date_sign:
+                            message_check_valid.append(
+                                "Digital signature is not valid at the time of sign")
+                            is_valid = False
+                        if date_sign != date_invoice:
+                            message_check_valid.append(
+                                "The sign time does not match the creation time")
+                            is_valid = False
+                    else:
+                        message_check_valid.append(
+                            "Digital signature of the seller is invalid")
+                        is_valid = False
+
+            # Cơ quan thuế
+            signature_CQT = root.find(".//DSCKS/CQT")
+            signature_CQT = signature_CQT.find(
+                ".//{http://www.w3.org/2000/09/xmldsig#}Signature") if signature_CQT != None else signature_CQT
+            if signature_CQT != None:
+                x509_CQT = signature_CQT.find(
+                    ".//{http://www.w3.org/2000/09/xmldsig#}X509Certificate")
+                if x509_CQT != None:
+                    cert_CQT = x509_CQT.text
+                    data_signature_CQT = self.check_X509Certificate(cert_CQT)
+                    if data_signature_CQT == False:
+                        message_check_valid.append(
+                            "Digital signature of the tax authority is invalid")
+                        is_valid = False
+
+            # Người mua
+            signature_Buyer = root.find(".//DSCKS/NMua")
+            signature_Buyer = signature_Buyer.find(
+                ".//{http://www.w3.org/2000/09/xmldsig#}Signature") if signature_Buyer != None else signature_Buyer
+
+            if signature_Buyer != None:
+                x509_Buyer = signature_Buyer.find(
+                    ".//{http://www.w3.org/2000/09/xmldsig#}X509Certificate")
+                if x509_Buyer != None:
+                    cert_Buyer = x509_Buyer.text
+                    data_signature_Buyer = self.check_X509Certificate(
+                        cert_Buyer)
+                    if data_signature_Buyer == False:
+                        message_check_valid.append(
+                            "Digital signature of the buyer is invalid")
+                        is_valid = False
+
+            return is_valid
+        except:
+            raise UserError(
+                _("The attached file is not an invoice or has an unsupported structure. Please select a different attachment and try again."))
+
+    def check_xml_valid(self, data):
+        is_valid = True  # Chưa chỉnh sửả
+        xml_data = data.decode()
+        dsig = chilkat2.XmlDSig()  # object XML digital
+        load_data = dsig.LoadSignature(xml_data)
+        if load_data:
+            numSignatures = dsig.NumSignatures
+            i = 0
+            while i < numSignatures:
+                dsig.Selector = i
+
+                bVerifyRefDigests = False
+                bSignatureVerified = dsig.VerifySignature(bVerifyRefDigests)
+                if not bSignatureVerified:
+                    is_valid = False
+                    break
+                numRefDigests = dsig.NumReferences
+                j = 0
+                while j < numRefDigests:
+                    bDigestVerified = dsig.VerifyReferenceDigest(j)
+                    if bDigestVerified == False:
+                        is_valid = False
+                        break
+                    j = j + 1
+                i = i + 1
+        else:
+            is_valid = False
+
+        return is_valid
+
+    def check_X509Certificate(self, data):
+        # try:
+        padding = len(data) % 4
+        if padding > 0:
+            data += "=" * (4 - padding)
+
+        # Decode the certificate string from base64 and load as bytes
+        certificate_bytes = base64.b64decode(data)
+        certificate = x509.load_der_x509_certificate(
+            certificate_bytes, default_backend())
+
+        subject = certificate.subject
+        # Tên đơn vị ký hoá đơn
+        common_name = next(
+            (attr.value for attr in subject if attr.oid ==
+             x509.oid.NameOID.COMMON_NAME),
+            None
+        )
+        tax_id = next(
+            (attr.value for attr in subject if attr.oid ==
+             x509.oid.NameOID.USER_ID),
+            None
+        )
+        # print(tax_id)
+        # # Thời hạn
+        valid_from = certificate.not_valid_before
+        valid_to = certificate.not_valid_after
+        return {
+            'common_name': common_name,
+            'tax_id': tax_id[4::] if tax_id != None else "",
+            'valid_from': valid_from,
+            'valid_to': valid_to
+        }
+        # except:
+        #     return False
+    # endregion
+
+    # region Get Data
     # Domain theo company
     def _domain_company(self):
         return ['|', ('company_id', '=', False), ('company_id', '=', self.company_id.id)]
@@ -82,7 +361,6 @@ class AccountMove(models.Model):
     def get_default_account(self, partner_id):
         # Neu co hoa don gan nhat thi lay hoa don accounline cua hoa don gan nhat
         # khong return ve false
-        print(partner_id)
         account_move_id = self.env['account.move'].search([('partner_id', '=', partner_id),
                                                            ('state', '=', 'posted'), ('journal_id', '=', self.journal_id.id)], order="id DESC", limit=1)
         if account_move_id:
@@ -213,8 +491,8 @@ class AccountMove(models.Model):
         if self.company_id.currency_id in possible_currencies:
             return self.company_id.currency_id
         return possible_currencies[:1]
-
     # Map VAT vào hóa đơn
+
     def _get_vat_line(self, data):
         if data['VAT'][:-1].isdigit():
             type = self.journal_id.type
@@ -234,8 +512,8 @@ class AccountMove(models.Model):
                 return tax_id.id
         else:
             return False
-
     # Map các dòng chi tiết của hóa đơn
+
     def _get_invoice_lines(self, results):
         """
         Get write values for invoice lines.
@@ -266,19 +544,19 @@ class AccountMove(models.Model):
             invoice_lines_to_create.append(vals)
 
         return invoice_lines_to_create
-    # endregion
-
     # region Get data XML format
     # Load data XML
+
     def load_invoice(self, data_attachment, force_write=False):
         self.ensure_one()
+        self = self.with_context(tracking_disable=True)
         data_convert = self.convert_data(data_attachment)
         if data_convert == False:
             return False
         self.mapping_invoice_from_data(data_convert, force_write=force_write)
         return True
-
     # Convert data xml thành json
+
     def convert_data(self, data):
         try:
             decoded_data = base64.b64decode(data)
@@ -370,12 +648,9 @@ class AccountMove(models.Model):
         except:
             return False
     # endregion
-
     # Map data vào hóa đơn
+
     def mapping_invoice_from_data(self, data, force_write=False):
-        # if force_write:
-        #     self.invoice_line_ids = [Command.clear()]
-        # self.invoice_line_ids.unlink()
 
         # Lấy các data cần thiết
         invoice_id = data['invoice_No']
@@ -457,8 +732,28 @@ class AccountMove(models.Model):
             list_log_note.append(
                 ("The total amount in the invoice differs from the calculation in Odoo", "warning"))
 
+    # endregion
+    
+    # region Digital
+
+    def get_message_digital(self):
+        list_message = message_auto_digital
+        return list_message
+    # Xác định file đầu vào
+    def get_file_format(self, binary_data):
+        # Tạo một đối tượng magic
+        file_magic = magic.Magic(mime=True, mime_encoding=True)
+
+        # Xác định định dạng của dữ liệu binary
+        file_format = file_magic.from_buffer(binary_data)
+
+        # Tách lấy phần đuôi của định dạng
+        file_extension = file_format.split(';')[0]
+
+        return file_extension
     # Sự kiện Diligital
     def update_data_invoice_vn(self):
+        tracking_history_data.clear()
         list_log_note.clear()
         Attachment = self.env['ir.attachment']
         attachments = Attachment.search(
@@ -467,7 +762,7 @@ class AccountMove(models.Model):
             data_attachments = [x.datas.decode('utf-8') for x in attachments]
             # Xử lý 1 file
             file_extension = os.path.splitext(attachments[0].name)[1]
-            print(file_extension)
+
             file_extension = file_extension.lower()
             if len(data_attachments) == 1:
                 data_attachment = data_attachments[0]
@@ -480,6 +775,11 @@ class AccountMove(models.Model):
                     if is_create == False:
                         raise UserError(
                             _("The attached file is not an invoice or has an unsupported structure. Please select a different attachment and try again."))
+                    else:
+                        self.digital_state = 'done'
+                        valid = self.check_invoice_valid(binary_data)
+                        self.log_note_digital()
+                        self.log_note_ca_invoice(valid)
                 else:
                     raise UserError(_('The file format must be XML.'))
             # Xử lý nhiều file
@@ -494,17 +794,57 @@ class AccountMove(models.Model):
                             data_attachment, force_write=False)
                         # Nếu tạo hóa đơn thành công dừng chương trinh
                         if is_create:
+                            self.digital_state = 'done'
                             invoice_xml = True
+                            valid = self.check_invoice_valid(binary_data)
+                            # Log notice
+                            self.log_note_digital()
+                            self.log_note_ca_invoice(valid)
                             break
                         invoice_xml = False
 
                 if invoice_xml == False:
                     raise UserError(
-                        _('The attached files are not invoices or they have an unsupported structure or they are not XML files. Please select a different attachment file and try again.'))
+                        _('The attached files are not XML files or they have an unsupported structure. Please select a different attachment file and try again.'))
         self.log_note()
 
+    # endregion
+    
+    # region Cron
+    def cron_xml(self):
+        Attachment = self.env['ir.attachment']
+        attachments = Attachment.search(
+            [('res_model', '=', 'account.move'), ('res_id', '=', self.id)])
+        if attachments.exists():
+            data_attachments = [x.datas.decode('utf-8') for x in attachments]
+            # Neu co nhieu file hoac ko co file
+            if len(data_attachments) < 1:
+                return False
+            else:
+                data_attachment = data_attachments[0]
+                binary_data = base64.b64decode(data_attachment)
+                file_format = self.get_file_format(binary_data)
+                file_format = file_format.lower()
+                # neu file co dinh dang PDF bo qua
+                self.update_data_invoice_vn_cron()
+                return True
+
+    def _cron_digital(self):
+        message_auto_digital.clear()
+        for rec in self.search([('digital_state', '=', 'waiting_upload'), ('state', '=', 'draft')]):
+            try:
+                with self.env.cr.savepoint(flush=False):
+                    rec.cron_xml()
+                    # We handle the flush manually so that if an error occurs, e.g. a concurrent update error,
+                    # the savepoint will be rollbacked when exiting the context manager
+                    self.env.cr.flush()
+                self.env.cr.commit()
+            except (IntegrityError, OperationalError) as e:
+                pass
     def update_data_invoice_vn_cron(self):
+        tracking_history_data.clear()
         list_log_note.clear()
+
         Attachment = self.env['ir.attachment']
         attachments = Attachment.search(
             [('res_model', '=', 'account.move'), ('res_id', '=', self.id)])
@@ -521,13 +861,22 @@ class AccountMove(models.Model):
                         data_attachment, force_write=False)
                     if is_create == False:
                         pass
+                    else:
+                        self.digital_state = 'done'
+                        valid = self.check_invoice_valid(binary_data)
+                        self.log_note_digital()
+                        self.log_note_ca_invoice(valid)
+                    message_auto_digital.append(
+                        "The invoice file "+attachments[0].name+" has been automatically digitized.")
+                    self.digital_state = 'done'
                 else:
                     pass
             # Xử lý nhiều file
             elif len(data_attachments) > 1:
                 invoice_xml = False
                 # Chạy một vòng tất cả các hóa đơn xml
-                for data_attachment in data_attachments:
+                for attachment in attachments:
+                    data_attachment = attachment.datas.decode('utf-8')
                     binary_data = base64.b64decode(data_attachment)
                     file_format = self.get_file_format(binary_data)
                     if "xml" in file_format or file_format == "text/plain":
@@ -535,46 +884,18 @@ class AccountMove(models.Model):
                             data_attachment, force_write=False)
                         # Nếu tạo hóa đơn thành công dừng chương trinh
                         if is_create:
+                            self.digital_state = 'done'
                             invoice_xml = True
+                            message_auto_digital.append(
+                                "The invoice file "+attachment.name+" has been automatically digitized.")
+                            valid = self.check_invoice_valid(binary_data)
+                            self.log_note_digital()
+                            self.log_note_ca_invoice(valid)
                             break
                         invoice_xml = False
 
                 if invoice_xml == False:
                     pass
         self.log_note()
-
-    # Log cảnh báo lỗi
-    def log_note(self):
-        logs = list_log_note
-        for log in logs:
-            if log[1] == "notice":
-                note = "⚠️ [NOTICE] "+log[0]
-            else:
-                note = "⚠️ [WARNING] "+log[0]
-            odoobot = self.env.ref('base.partner_root')
-            self.message_post(body=_(note),
-                              message_type='comment',
-                              subtype_xmlid='mail.mt_note',
-                              author_id=odoobot.id)
-        list_log_note.clear()
-
-    def show_popup(self):
-        template_data = {
-            'name': 'Trinh Xuan Phuong'
-        }
-
-        rendered_template = self.env['ir.ui.view']._render_template(
-            'leonix_vn_bill_digitization.xml_preview_template_id', template_data)
-        rendered_template = tools.html_sanitize(rendered_template)
-        # print(rendered_template)
-
-        return {
-            'name': 'Invoice Preview',
-            'type': 'ir.actions.act_window',
-            'view_mode': 'form',
-            'res_model': 'account.preview.xml.wizard',
-            'target': 'new',
-            # 'context': {
-            #     'default_body_html': rendered_template,
-            # },
-        }
+    
+    # endregion
