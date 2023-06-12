@@ -36,7 +36,7 @@ class PreviewXML(models.TransientModel):
         return False
 
     def get_data_xml(self, active_id):
-        # try:
+        try:
             attachment = self.env['ir.attachment'].search(
                 [('id', '=', active_id)])
             data_attachment = attachment.datas.decode('utf-8')
@@ -260,8 +260,8 @@ class PreviewXML(models.TransientModel):
 
             else:
                 return False
-        # except:
-        #     return False
+        except:
+            return False
 
     def check_X509Certificate(self, data):
         try:
